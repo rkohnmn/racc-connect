@@ -56,6 +56,10 @@ None.
 - [VERIFIED-RUN] Committed the work locally on branch main. No remote was added and nothing was pushed.
 - [HUMAN-PENDING] No human-only hardware or tailnet checks were claimed as complete.
 
+### 2026-10-06 — Owner-reported hardware inventory
+
+- [UNVERIFIED] The owner supplied the MacBook, laptop, and server PC specifications now recorded in docs/HARDWARE.md. The agent did not independently inspect the machines or verify drivers, operating-system builds, or monitor details.
+- [HUMAN-PENDING] Hardware behavior tests and the missing machine details remain on the checklist.
 #### Final M0 acceptance report
 
 1. PASS — cargo fmt --all -- --check; exit 0, no formatting diff.

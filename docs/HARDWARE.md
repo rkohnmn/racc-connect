@@ -28,12 +28,14 @@ The checks below require the project author's machines or tailnet. They are not 
 - [ ] [HUMAN-PENDING] Record macOS version and ScreenCaptureKit availability.
 - [ ] [HUMAN-PENDING] Measure sustained VideoToolbox 720p30 and 1080p30, temperature, dropped frames, and permission prompts.
 
+## Owner-reported hardware inventory
+
+The following specifications were supplied by the owner on 2026-10-06. They have not been independently verified or measured by the agent.
+
 ## Environment record
 
-Fill this block in on the physical machines.
-
-Windows PC #1: Windows build ____  GPU ____  driver ____  monitors ____
-Windows PC #2: Windows build ____  GPU ____  driver ____  monitors ____
-2015 Mac: model ____  macOS ____  GPU ____  RAM ____
+Windows PC #1 (Laptop): Windows build ____  CPU AMD Ryzen 7 5800U  GPU NVIDIA GeForce RTX 3050 Ti  driver ____  monitors ____  RAM 16 GB at 4266 MHz
+Windows PC #2 (Server PC): Windows build ____  CPU AMD Ryzen 9 5900X  GPU AMD Radeon RX 7900 GRE  driver ____  monitors ____  RAM 32 GB DDR4
+MacBook (exact model and year not supplied): macOS Monterey 12.7.6  CPU Intel Core i7 2.2 GHz quad-core  GPU Intel Iris Pro 1536 MB  RAM 16 GB 1600 MHz DDR3
 Tailscale versions: PC1 ____  PC2 ____  Mac ____
 Agent sandbox: OS ____  Rust ____  Windows cross-check ____  macOS cross-check ____
