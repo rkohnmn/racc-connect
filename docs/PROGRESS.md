@@ -17,7 +17,7 @@ Probe date: 2026-10-06 (America/New_York).
 |---|---|---|
 | M0 Workspace scaffold | Complete | [COMPILE-ONLY] Workspace, scripts, and documentation checks passed; see final report. |
 | M0.5 Housekeeping and publish | Complete | [VERIFIED-RUN] M0.5 checks passed; `main` was pushed to the empty requested origin. |
-| M1 Protocol | Not started | [UNVERIFIED] |
+| M1 Protocol | Complete | [VERIFIED-RUN] Protocol tests, documentation, cargo-deny, scripts, and compile-only target checks passed; see the M1 report. |
 | M2 Transport | Not started | [UNVERIFIED] |
 | M3 Topology and session logic | Not started | [UNVERIFIED] |
 | M4a UI toolkit spike | Not started | [UNVERIFIED] |
@@ -35,6 +35,7 @@ Probe date: 2026-10-06 (America/New_York).
 - [VERIFIED-RUN] The two binary stubs printed their package names and versions.
 - [VERIFIED-RUN] The layering check passed normally and rejected a temporary forbidden rd-core to rd-app dependency edge.
 - [COMPILE-ONLY] Workspace clippy and both platform cross-checks passed.
+- [VERIFIED-RUN] M1 bounded v0 protocol passed 20 racc-proto tests, the 10000-case property run, cargo-deny and both check-all scripts.
 - [HUMAN-PENDING] Real Windows, Mac, GPU, input, and Tailscale checks remain listed in docs/HARDWARE.md.
 
 ## Unverified
@@ -157,3 +158,71 @@ M1 should start from the `racc-proto` package in `crates/proto` and the table of
 ##### M1 starting point
 
 M1 starts from the `racc-proto` package stub in `crates/proto` and the protocol table of contents in `docs/PROTOCOL.md`. Implement only the M1 protocol types, strict bounded parsing/serialization, and malformed-input/round-trip checks next. No M1 work was started in this session.
+
+### 2026-10-06 — M1 bounded protocol crate
+
+- [VERIFIED-RUN] Read the active M1 objective and saved the exact prompt at docs/goals/M1.md. Implemented only in crates/proto and documentation/config files allowed by the objective.
+- [VERIFIED-RUN] Implemented the v0 18-byte video header, 19-byte cursor datagram, 16 typed control messages, bounded TCP framing, and callback-based incremental frame decoder. Production protocol code contains no unsafe, unwrap, expect, TODO, or unimplemented paths.
+- [VERIFIED-RUN] racc-proto has no normal dependencies. proptest 1.11.0 is the only development dependency. cargo deny reported advisories, bans, licenses and sources OK.
+- [VERIFIED-RUN] Added 10 golden/boundary tests and 10 robustness tests. cargo test --workspace passed 20 racc-proto tests; other crate harnesses contain zero tests.
+- [VERIFIED-RUN] PROPTEST_CASES=10000 cargo test -p racc-proto passed. Four property tests each ran 10000 generated cases; the robustness test harness completed in 7.26 seconds.
+- [COMPILE-ONLY] Windows MSVC and Intel macOS target checks both passed. These checks establish compilation only.
+- [VERIFIED-RUN] Both PowerShell and Git Bash layering and check-all scripts passed. The scripts reported 13 library crates layered correctly and all cargo-deny checks OK.
+- [UNVERIFIED] UDP video has no payload-length field, so a shortened datagram with a valid header and nonempty payload cannot be distinguished from a valid shorter fragment. The limitation and resulting test boundary are documented in docs/PROTOCOL.md and question 13 in docs/OPEN_QUESTIONS.md.
+- [HUMAN-PENDING] No hardware behavior was tested; M1 is protocol-only. Existing machine and hardware checklists remain unchanged.
+
+#### Final M1 acceptance report
+
+1. PASS — cargo fmt --all -- --check; exit 0.
+2. PASS — cargo clippy --workspace --all-targets -- -D warnings; exit 0, Finished dev profile with no warnings.
+3. PASS — cargo test --workspace; exit 0; racc-proto integration tests reported 20 passed and 0 failed (10 golden, 10 robustness); all other workspace harnesses reported 0 tests.
+4. PASS — PowerShell set PROPTEST_CASES=10000 then cargo test -p racc-proto; exit 0; all four property tests completed at 10000 cases each; robustness harness 7.26 seconds.
+5. PASS — PowerShell set RUSTDOCFLAGS=-D warnings then cargo doc --workspace --no-deps; exit 0, generated workspace docs.
+6. PASS — cargo deny check --warn vulnerability --warn unsound --warn unmaintained --warn notice --warn yanked; exit 0, advisories ok, bans ok, licenses ok, sources ok. cargo tree -p racc-proto -e normal printed only racc-proto v0.1.0.
+7. PASS — scripts/check-layering.ps1 and Git Bash scripts/check-layering.sh exited 0 with “Layering check passed for 13 library crates.” scripts/check-all.ps1 and Git Bash scripts/check-all.sh exited 0 and included clean cargo-deny results.
+8. PASS — cargo check --workspace --target x86_64-pc-windows-msvc and cargo check --workspace --target x86_64-apple-darwin both exited 0. Label: COMPILE-ONLY.
+9. PASS — constants_match_v0_wire_limits test asserts all eleven specified constants; maximal video datagram test asserts 1200 bytes.
+10. PASS — all 16 control types have round-trip or golden tests and byte layouts in docs/PROTOCOL.md. Required golden vectors in tests and documentation match.
+11. PASS — docs/PROTOCOL.md, ADRs 0009–0011, docs/OPEN_QUESTIONS.md and this progress report updated. The UDP truncation limitation is recorded as an open question.
+12. PASS — all M1 commits use author and committer rkohnmn <275230809+rkohnmn@users.noreply.github.com>, have no attribution trailers, and were pushed with normal git push origin main; final status is main...origin/main.
+
+##### Created or changed
+
+- crates/proto/Cargo.toml and Cargo.lock: added proptest 1.11.0 as the only dev dependency; normal dependency tree remains empty.
+- crates/proto/src/lib.rs, codec.rs, error.rs, framing.rs, messages.rs and video.rs.
+- crates/proto/tests/golden.rs and robustness.rs.
+- docs/goals/M1.md, docs/PROTOCOL.md, docs/OPEN_QUESTIONS.md, and ADRs 0009, 0010 and 0011.
+- docs/PROGRESS.md with this M1 report.
+
+##### Control message encoded size ranges
+
+Sizes include the four-byte TCP length prefix, type byte, and payload.
+
+| Type | Message | Minimum | Maximum |
+|---:|---|---:|---:|
+| 1 | Hello | 21 | 277 |
+| 2 | HelloAck | 21 | 277 |
+| 3 | TopologyAnnounce | 14 | 2510 |
+| 4 | SwitchMonitor | 13 | 13 |
+| 5 | StreamReset | 26 | 26 |
+| 6 | SetQuality | 11 | 11 |
+| 7 | RequestKeyframe | 7 | 7 |
+| 8 | PauseVideo | 5 | 5 |
+| 9 | ResumeVideo | 5 | 5 |
+| 10 | InputEvent | 14 | 16 |
+| 11 | ClipboardUpdate | 15 | 524303 |
+| 12 | StatsReport | 25 | 25 |
+| 13 | Ping | 21 | 21 |
+| 14 | Pong | 21 | 21 |
+| 15 | CursorShape | 21 | 65553 |
+| 16 | Goodbye | 6 | 6 |
+
+##### UNVERIFIED, COMPILE-ONLY, and open questions
+
+- [COMPILE-ONLY] Both required platform target checks passed; no runtime or hardware behavior is claimed.
+- [UNVERIFIED] UDP payload truncation after a valid header cannot be detected without a payload-length field; see open question 13.
+- Open questions added for Unicode text input on international layouts, whether mouse movement should move to latest-wins UDP after M7 measurements, maximum frame-size policy after real encoder output, and the video fragment-length ambiguity.
+
+##### M2 starting point
+
+M2 starts from the bounded types, constants, and control framing in racc-proto and their wire contract in docs/PROTOCOL.md. Implement transport-specific UDP slicing/reassembly, pacing, TCP control I/O, and bind-to-interface logic in racc-net, with loss/reorder/jitter tests. No M2 code was started in this session.
