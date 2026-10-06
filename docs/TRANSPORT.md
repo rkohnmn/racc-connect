@@ -73,7 +73,11 @@ The 18-byte header plus at most 1182 payload bytes keeps every video datagram at
 | Sender / receiver socket buffers | 1 MiB / 2 MiB | Requested kernel buffering |
 | Receiver poll / buffer | 5 ms / 2048 bytes | Bounded receive wakeup and fixed storage |
 | Receiver event channel | 64 events | Bounded handoff to the caller |
-| TCP keepalive / write timeout | 10 s / 2 s | Detects idle peers and bounds writes |
+| Force-keyframe event channel | 2 events | Bounded sender backpressure signals |
+| TCP_NODELAY | enabled | Disables Nagle for control messages |
+| TCP keepalive idle | 10 s | Starts operating-system keepalive probes |
+| TCP connect / write timeout | 2 s / 2 s | Bounds connection setup and complete writes |
+| TCP read timeout | 5 s default, configurable | Bounds each blocking receive attempt |
 | Worker join bound | 1000 ms | Explicit close budget |
 | Testkit simulated queue | 4 MiB | Finite virtual-network retention |
 
@@ -110,7 +114,7 @@ At 0% iid loss, all three tiers delivered all 18,000 frames and emitted zero key
 
 ### B. Real sender pacing
 
-A 233,328-byte encoded keyframe (198 datagrams, 236,892 bytes including headers) was sent through `VideoSender` over Windows loopback. The measured first-to-last send duration was 20,042 µs; maximum adjacent-send gap was 995 µs; maximum observed sleep call was 961 µs. The pacer target was 19,999 µs (60% of 33,333 µs). The measured duration exceeded that target by 43 µs. This is one Windows loopback observation; no macOS timer result is claimed.
+A 233,328-byte encoded keyframe (198 datagrams, 236,892 bytes including headers) was sent through `VideoSender` over Windows loopback. The measured first-to-last send duration was 20,167 µs; maximum adjacent-send gap was 1,067 µs; maximum observed sleep call was 1,063 µs. The pacer target was 19,999 µs (60% of 33,333 µs). The measured duration exceeded that target by 168 µs. The loopback test consumes receiver events concurrently and is serialized with the CPU-heavy virtual soak, keeping the bounded event queue and host UDP receive queue from overflowing under test load; its zero-loss delivery assertion remains 300/300. This is one Windows loopback observation; no macOS timer result is claimed.
 
 ### C. Reassembly cost and memory
 
