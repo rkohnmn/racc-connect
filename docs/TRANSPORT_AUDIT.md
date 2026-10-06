@@ -235,4 +235,4 @@ For the current implementation, define v0 acceptable as >=90% delivered and <=10
 
 ## Final acceptance checklist
 
-The 14 M2.5 acceptance checks and available evidence are appended to `docs/PROGRESS.md`. Checks 3, 5, 6 and 14 remain BLOCKED-HUMAN; do not describe this audit as fully accepted.
+The 14 M2.5 acceptance checks and available evidence are appended to `docs/PROGRESS.md`. Checks 3, 5 and 14 remain BLOCKED-HUMAN; check 6 now passes COMPILE-ONLY. Do not describe this audit as fully accepted.
