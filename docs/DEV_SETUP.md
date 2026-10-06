@@ -127,7 +127,7 @@ For service and helper work (M6), you will test as an administrator and may need
 
 Run from the repository root.
 
-Dependency layering: lower crates must never depend on higher crates, and no library crate may depend on racc-app or racc-host-agent. racc-core and every crate below it must build and test with no UI crate present. Run scripts/check-layering.sh or scripts/check-layering.ps1 to check this.
+Dependency layering: lower crates must never depend on higher crates, and no library crate may depend on racc-app or racc-host-agent. racc-core and every crate below it must build and test with no UI crate present. Run scripts/check-layering.sh or scripts/check-layering.ps1 to check this. Run scripts/check-features.sh or scripts/check-features.ps1 to confirm the test-only loopback feature is absent from both shipped binaries.
 
 | Task | Command |
 |---|---|

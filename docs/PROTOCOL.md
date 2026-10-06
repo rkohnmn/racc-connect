@@ -50,7 +50,7 @@ Offsets are from the beginning of the datagram.
 | 14 | 4 | u32 | capture_ts_us, wrapping host capture time |
 | 18 | 1–1182 | bytes | H.264 Annex B access-unit fragment |
 
-Flags: bit 0 KEY, bit 1 LAST_FRAGMENT, bit 2 CONFIG (SPS/PPS present); bits 3–7 are reserved and must be zero. Fragment count is 1..=1024; index is less than count; LAST is set iff index equals count minus one. Payload is nonempty and total datagram length is at most 1200. Since there is no payload-length field, a shorter datagram with a valid header and nonempty payload is indistinguishable from a valid shorter fragment. Join fragments by increasing index. Parsing borrows payload bytes and allocates nothing.
+Flags: bit 0 KEY, bit 1 LAST_FRAGMENT, bit 2 CONFIG (SPS/PPS present); bits 3–7 are reserved and must be zero. Fragment count is 1..=1024; index is less than count; LAST is set iff index equals count minus one. A frame of N bytes is split into ceil(N / 1182) fragments: every non-final payload has exactly 1182 bytes, and the final payload has 1–1182 bytes. The receiver places payloads at frag_idx × 1182 and enforces this uniform-size rule. Within one frame, KEY, CONFIG, capture_ts_us, and frag_cnt agree. A frame is at most 1,210,368 bytes. Payload is nonempty and total datagram length is at most 1200. v0 is an undeployed draft, so this clarification is made in place without a version bump. UDP datagrams preserve their boundaries and WireGuard authenticates them, so payload truncation in transit is not a threat-model concern; a shorter final payload cannot be distinguished from a structurally valid final fragment because no full-frame byte length is carried. Join fragments by increasing index. Parsing borrows payload bytes and allocates nothing.
 
 ### Cursor update, kind 2
 

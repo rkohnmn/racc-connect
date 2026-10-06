@@ -358,7 +358,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-Add any extra scripts (for example `scripts/check-all.sh`) and keep them listed here. Additional scripts: scripts/check-all.sh and scripts/check-all.ps1; both run the layering check.
+Add any extra scripts (for example `scripts/check-all.sh`) and keep them listed here. Additional scripts: scripts/check-all.sh and scripts/check-all.ps1 (both run layering and feature-gate checks), scripts/check-layering.sh and scripts/check-layering.ps1, and scripts/check-features.sh and scripts/check-features.ps1.
 
 ---
 
