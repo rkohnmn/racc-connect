@@ -1,6 +1,6 @@
 # M2.5 Transport Audit
 
-Status: audit and measurement work complete; final acceptance BLOCKED-HUMAN. The latest real UDP loopback check failed three times because one localhost datagram was lost with proxy loss disabled. The test was revised to distinguish a clean run from observed loss and require keyframe recovery, but the M2.5 stop rule forbids another run of that check. See question 18 and the acceptance report in docs/PROGRESS.md. No M3 work is included.
+Status: audit and measurement work complete; all local acceptance checks pass. The normal push is BLOCKED-HUMAN because this goal forbids network access. The corrected real-UDP loopback test passed in the final full workspace and both check-all runs. See question 18 and the final acceptance report in docs/PROGRESS.md. No M3 work is included.
 
 ## Phase 1 — analytic baseline
 
@@ -103,6 +103,8 @@ The response keyframe took 716.337 ms from sender schedule to complete delivery 
 ### Root cause
 
 The dominant original failure was the testkit's silent 102%-of-video-bitrate bottleneck with only a 4 MiB queue. Protocol headers and duplicated datagrams already consumed some of that margin, and each 8x keyframe burst serialized for hundreds of milliseconds, causing queue buildup and requests to be retried before a response arrived. The old stale-picture accumulator also truncated earlier freezes to the last tail interval, so those stale percentages were inaccurate. Neither fault required changing `racc-net` policy constants or wire types.
+
+The real-UDP smoke test also showed that a 0% injected-loss profile cannot guarantee lossless delivery from the Windows UDP stack. The old proxy counter counted attempted sends as forwarded; it now reports successful writes and send errors separately. The revised test requires exact delivery when no loss is observed and checks keyframe recovery when real UDP loss occurs. Its final full-workspace and both check-all runs passed. The exact stage of the historical localhost packet drop remains inconclusive.
 
 ## Phase 3 — fixes and corrected model
 
@@ -235,4 +237,4 @@ For the current implementation, define v0 acceptable as >=90% delivered and <=10
 
 ## Final acceptance checklist
 
-The 14 M2.5 acceptance checks and available evidence are appended to `docs/PROGRESS.md`. Checks 3, 5 and 14 remain BLOCKED-HUMAN; check 6 now passes COMPILE-ONLY. Do not describe this audit as fully accepted.
+The 14 M2.5 acceptance checks and evidence are appended to `docs/PROGRESS.md`. Local checks 1–13 pass; check 14 remains BLOCKED-HUMAN solely because the no-network constraint prevents a normal push.
