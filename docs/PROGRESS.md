@@ -18,7 +18,7 @@ Probe date: 2026-10-06 (America/New_York).
 | M0 Workspace scaffold | Complete | [COMPILE-ONLY] Workspace, scripts, and documentation checks passed; see final report. |
 | M0.5 Housekeeping and publish | Complete | [VERIFIED-RUN] M0.5 checks passed; `main` was pushed to the empty requested origin. |
 | M1 Protocol | Complete | [VERIFIED-RUN] Protocol tests, documentation, cargo-deny, scripts, and compile-only target checks passed; see the M1 report. |
-| M2 Transport | Not started | [UNVERIFIED] |
+| M2 Transport | Complete | [VERIFIED-RUN] M2 acceptance checks 1–13 passed on Windows 10.0.19045; see the final report below. Windows and Intel macOS target checks are COMPILE-ONLY. |
 | M3 Topology and session logic | Not started | [UNVERIFIED] |
 | M4a UI toolkit spike | Not started | [UNVERIFIED] |
 | M4b UI shell | Not started | [UNVERIFIED] |
@@ -226,3 +226,87 @@ Sizes include the four-byte TCP length prefix, type byte, and payload.
 ##### M2 starting point
 
 M2 starts from the bounded types, constants, and control framing in racc-proto and their wire contract in docs/PROTOCOL.md. Implement transport-specific UDP slicing/reassembly, pacing, TCP control I/O, and bind-to-interface logic in racc-net, with loss/reorder/jitter tests. No M2 code was started in this session.
+
+### 2026-10-06 -- M2 transport implementation and acceptance report
+
+- [VERIFIED-RUN] Implemented M2 transport in racc-net and deterministic impairment tools in racc-testkit on Windows 10.0.19045 (Windows PC #1), 2026-10-06.
+- [TESTED-FAKE] Implemented a deterministic sans-I/O core using injected microsecond time, plus bounded std-thread/std::net/socket2 I/O workers: UDP slicing/reassembly, ordered latest-wins delivery with keyframe gap safety, retry backoff, bounded loss estimation, sender pacing/backpressure, framed TCP control I/O, and Tailscale-only bind validation.
+- [VERIFIED-RUN] The seeded virtual network covers iid and Gilbert–Elliott burst loss, reorder, duplication, delay/jitter, bitrate limits and finite queues. The real loopback proxy test concurrently collects receiver events and is serialized against the CPU-heavy soak test; the 300-frame zero-loss assertion remains intact.
+- [VERIFIED-RUN] The temporary test-bind dependency was added to racc-app for the negative gate check; both feature scripts rejected it with exit 1 and crates/app/Cargo.toml was restored byte-for-byte.
+- [UNVERIFIED] No Tailscale daemon, second PC, Mac, GPU capture, encode or decode path was exercised. Windows/macOS target checks are compile-only and do not prove runtime behavior.
+
+#### Final acceptance report
+
+1. **PASS** — cargo fmt --all -- --check exited 0 in both final check-all runs; no formatting output.
+2. **PASS** — cargo clippy --workspace --all-targets -- -D warnings exited 0 in both final check-all runs; finished with no warnings.
+3. **PASS** — cargo test --workspace exited 0 in both final check-all runs. Counts: racc-net 30 passed, 0 failed, 1 ignored manual release benchmark; racc-proto 20 integration tests passed (10 golden, 10 robustness; library harness 0); racc-testkit 6 passed. The other 12 workspace crates each had 0 tests. Total: 56 passed, 0 failed, 1 ignored; doc-test harnesses had 0 tests.
+4. **PASS** — $env:PROPTEST_CASES='10000'; cargo test -p racc-net exited 0: 28 passed, 0 failed, 1 ignored; 10,000 generated cases were requested for property tests.
+5. **PASS** — $env:RUSTDOCFLAGS='-D warnings'; cargo doc --workspace --no-deps exited 0 and generated workspace documentation.
+6. **PASS** — cargo deny check --warn vulnerability --warn unsound --warn unmaintained --warn notice --warn yanked exited 0: advisories ok, bans ok, licenses ok, sources ok. cargo tree -p racc-net -e normal showed racc-proto and socket2, with socket2 platform dependencies only.
+7. **PASS** — scripts/check-layering.ps1 and scripts/check-layering.sh passed for 13 library crates. scripts/check-features.ps1 and scripts/check-features.sh passed for racc-app and racc-host-agent. scripts/check-all.ps1 and scripts/check-all.sh both exited 0. In the negative test each feature script exited 1 with forbidden test-bind identified in racc-app; the original app manifest was restored byte-for-byte.
+8. **PASS — COMPILE-ONLY** — cargo check --workspace --target x86_64-pc-windows-msvc and cargo check --workspace --target x86_64-apple-darwin both exited 0; type-check results only.
+9. **PASS** — D5–D9 constants are documented in docs/TRANSPORT.md and asserted by racc-net tests m2_constants_match_the_transport_contract, m2_socket_and_thread_constants_match_the_transport_contract, and m2_control_defaults_match_the_transport_contract. racc-proto asserts MAX_DATAGRAM, header and fragment limits. Control defaults asserted: 10 s keepalive, 2 s write/connect timeout, 5 s read timeout.
+10. **PASS** — The 600-second virtual soak passed all three quality tiers at 0%, 0.5%, 1%, 2% and 5% iid loss plus Gilbert–Elliott burst loss. It asserts gap safety, bounded memory, >=200 ms request spacing, clean zero-loss delivery and stale-picture bound.
+11. **PASS** — TCP loopback round-tripped all 16 control types and passed oversized-prefix, byte-at-a-time, peer-close-mid-frame, timeout and socket-option checks. UDP loopback delivered 300/300 byte-identical ordered frames at 0% loss with zero requests. At seeded 2% loss, proxy forwarded 2027 of 2061 and dropped 34; 64 frames were delivered in order, 25 partial frames and one frame gap were counted, and 17 keyframe requests were emitted. Sender/receiver/proxy close and join assertions stayed below 1 second.
+12. **PASS** — docs/TRANSPORT.md contains architecture, state transitions, constants, pipeline, bind policy, counters and measurements A–D. docs/PROTOCOL.md records uniform 1182-byte fragmentation in place without a protocol version bump and the UDP/WireGuard boundary assumption. ADRs 0012–0014 exist; question 13 is resolved; questions 14–16 and M2/M7/Mac hardware checks are recorded.
+13. **PASS** — Small logical commits were pushed to origin/main with normal git push, no force push. M2 commits: bafea84, 3cc20fd, b0fa66d, ebeac3b, 56a983f and 556b5a6; the final progress-report commit is also pushed normally. Local Git identity is rkohnmn <275230809+rkohnmn@users.noreply.github.com>; author and committer match and no attribution trailers are present. The only untracked path is the original user-supplied docs/goals/GOAL_M2.md, preserved unchanged; canonical docs/goals/M2.md is committed.
+
+#### Measurements A -- ten-minute deterministic delivery simulation
+
+[VERIFIED-RUN] Each profile simulated 600 seconds at 30 fps (18,000 frames), with the seeded network, finite 4 MiB queue and keyframe response after modeled feedback plus encode delay. Stale picture means time frozen by more than one frame interval.
+
+| Tier | Loss profile | Frames delivered | Keyframe requests/min | Recovery median / p95 (ms) | Stale picture | Peak retained payload |
+|---|---:|---:|---:|---:|---:|---:|
+| 480p30, 1.5 Mbps | 0% iid | 100.000% | 0.00 | — | 0.001% | 49,644 B |
+| 480p30, 1.5 Mbps | 0.5% iid | 8.278% | 61.70 | 963.64 / 3,673.65 | 80.118% | 54,728 B |
+| 480p30, 1.5 Mbps | 1% iid | 3.639% | 66.20 | 929.34 / 2,886.60 | 85.620% | 59,796 B |
+| 480p30, 1.5 Mbps | 2% iid | 1.183% | 67.20 | 1,281.23 / 6,551.91 | 86.182% | 65,366 B |
+| 480p30, 1.5 Mbps | 5% iid | 0.156% | 63.00 | 9,819.12 / 41,086.57 | 77.240% | 63,682 B |
+| 720p30, 3.5 Mbps | 0% iid | 100.000% | 0.00 | — | 0.001% | 115,836 B |
+| 720p30, 3.5 Mbps | 0.5% iid | 1.761% | 62.20 | 1,590.10 / 2,678.18 | 93.378% | 143,421 B |
+| 720p30, 3.5 Mbps | 1% iid | 0.283% | 62.50 | 3,333.46 / 7,265.79 | 94.873% | 156,468 B |
+| 720p30, 3.5 Mbps | 2% iid | 0.139% | 61.70 | 7,724.45 / 17,769.12 | 92.100% | 155,286 B |
+| 720p30, 3.5 Mbps | 5% iid | 0.000% | 60.50 | no recovery observed | 99.999% | 155,286 B |
+| 1080p30, 7 Mbps | 0% iid | 100.000% | 0.00 | — | 0.001% | 231,672 B |
+| 1080p30, 7 Mbps | 0.5% iid | 0.372% | 61.00 | 2,216.26 / 10,397.55 | 96.466% | 286,134 B |
+| 1080p30, 7 Mbps | 1% iid | 0.000% | 60.40 | no recovery observed | 99.999% | 312,936 B |
+| 1080p30, 7 Mbps | 2% iid | 0.000% | 60.40 | no recovery observed | 99.999% | 314,118 B |
+| 1080p30, 7 Mbps | 5% iid | 0.000% | 60.20 | no recovery observed | 99.999% | 312,936 B |
+| 720p30 burst | Gilbert–Elliott | 7.144% | 58.90 | 928.94 / 3,585.16 | 88.210% | 128,484 B |
+
+#### Measurement B -- real sender pacing
+
+[VERIFIED-RUN] Windows 10.0.19045 loopback sent a 233,328-byte keyframe in 198 datagrams (236,892 bytes including headers). Measured duration was 20,167 us against a 19,999 us target, exceeding it by 168 us. Maximum adjacent-datagram gap was 1,067 us; maximum observed sleep call was 1,063 us. This is one Windows run; Mac timer behavior is not measured.
+
+#### Measurement C -- reassembler rate and memory
+
+[VERIFIED-RUN] Release-mode micro-run processed 100,000 one-fragment datagrams in 29.088 ms: 3,437,844 datagrams/second on one worker thread on Windows PC #1. Peak in-flight payload during the soak was 314,118 bytes, below the 4 MiB budget. This is a local CPU micro-run, not an end-to-end stream-rate guarantee.
+
+#### Conclusion D -- loss recovery choice
+
+At tested 0.5% iid loss, v0 recovery is already unacceptable for interactive viewing: only 8.278% of 480p frames, 1.761% of 720p frames and 0.372% of 1080p frames were delivered; a 233 KB keyframe needs about 198 fragments. Since the adjacent measured point is 0%, the simulations do not establish a more precise failure threshold between 0% and 0.5%. Evaluate selective requests for missing keyframe fragments before M7; compare XOR parity only if measured retransmission delay is too high. No NACK or FEC was implemented in M2.
+
+#### Created or changed -- M2
+
+- crates/net: bind policy, typed errors, bounded loss estimator, UDP slicer/reassembler, sender pacer/queue and real UDP/TCP socket workers.
+- crates/testkit: seeded xorshift impairment simulator, finite queue/rate limiting, loopback proxy, 10-minute profile soak and real 300-frame loopback tests.
+- Cargo.lock, crate manifests, deny.toml, scripts/check-features.ps1 and .sh, check-all script integration, and AGENTS.md script inventory.
+- docs/goals/M2.md, docs/TRANSPORT.md, docs/PROTOCOL.md, docs/OPEN_QUESTIONS.md, docs/HARDWARE.md, docs/DEV_SETUP.md and ADRs 0012–0014.
+
+#### UNVERIFIED, COMPILE-ONLY and HUMAN-PENDING
+
+- [TESTED-FAKE] Transport policy, impairment behavior and loopback sockets were exercised locally. This does not establish behavior on a tailnet or another OS.
+- [COMPILE-ONLY] Windows MSVC and Intel macOS target checks passed; they are not runtime or hardware verification.
+- [HUMAN-PENDING] docs/HARDWARE.md retains a conditional PC #1 loopback rerun if firewall or driver conditions differ, a two-Windows-PC Tailscale sender/viewer test after Tailscale is installed on both, and the 2015 Intel Mac pacing measurement.
+- [UNVERIFIED] No capture/GPU/video-codec path was exercised in M2. No real Tailscale direct/DERP loss or Mac sleep granularity was measured.
+
+#### Open questions added or resolved
+
+- Question 13 is resolved with uniform 1182-byte non-final fragments and the documented v0 truncation limitation.
+- Question 14 asks whether M7 should first evaluate selective NACK or XOR parity; measured results recommend selective keyframe-fragment NACK evaluation, but neither is implemented.
+- Question 15 remains HUMAN-PENDING for the 2015 Intel Mac sleep pacing result.
+- Question 16 remains HUMAN-PENDING until two Windows PCs stream across Tailscale and record direct/DERP, loss and recovery.
+
+#### M3 starting point
+
+M3 starts from the existing racc-topology, racc-session and racc-telemetry workspace stubs and the v0 display/control types in racc-proto. Implement display modeling and topology diffs, monitor-switch state and epoch handling with fake capture/encoder backends, coordinate math, counters and event types. Add the listed switch/loss/removed-display/rapid-switch/coordinate tests. No M3 work was started.
