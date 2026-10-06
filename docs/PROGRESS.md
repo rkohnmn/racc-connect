@@ -328,18 +328,18 @@ M3 starts from the existing racc-topology, racc-session and racc-telemetry works
 
 1. PASS — `cargo fmt --all -- --check`; exit 0 on the final edited tree.
 2. PASS — `cargo clippy --workspace --all-targets -- -D warnings`; exit 0 on the final edited tree.
-3. BLOCKED-HUMAN — The unfiltered `cargo test --workspace` cannot be rerun under the M2.5 three-failure stop rule. `cargo test --workspace --offline -- --skip real_udp_loopback_proxy_preserves_frames_and_recovers_under_seeded_loss` exited 0: racc-net 32 passed/1 ignored; racc-proto 10 golden + 10 robustness passed; racc-testkit 13 passed/1 filtered; every other crate and doc-test harness had 0 tests. See question 18.
+3. BLOCKED-HUMAN — The unfiltered `cargo test --workspace` cannot be rerun under the M2.5 three-failure stop rule. `cargo test --workspace --offline -- --skip real_udp_loopback_proxy_preserves_frames_and_recovers_under_seeded_loss` exited 0: racc-net 32 passed/1 ignored; racc-proto 10 golden + 10 robustness passed; racc-testkit 14 passed/1 filtered; every other crate and doc-test harness had 0 tests. See question 18.
 4. PASS — `$env:PROPTEST_CASES='10000'; cargo test -p racc-net`; exit 0, 30 passed, 1 ignored.
 5. BLOCKED-HUMAN — Current `cargo --offline deny check --warn vulnerability --warn unsound --warn unmaintained --warn notice --warn yanked`, both `check-layering.ps1/.sh`, and both `check-features.ps1/.sh` exited 0. `check-all.ps1` previously hit the stopped loopback test and `check-all.sh` was not run. The combined scripts remain unverified because they rerun that check.
 6. PASS — `cargo check --workspace --target x86_64-pc-windows-msvc --offline` and `cargo check --workspace --target x86_64-apple-darwin --offline` both exited 0. COMPILE-ONLY; no platform runtime claim.
 7. PASS — formulas, prediction tables, trace excerpt, H1-H7 verdicts and root-cause statement are in `docs/TRANSPORT_AUDIT.md`.
-8. PASS — regression evidence for the confirmed simulation-link and stale-time accounting defects is recorded in the audit; each test was observed failing with the old behavior and passing after the fix. Keyframe counter and stale-partial regressions pass in `racc-net`.
+8. PASS — regression evidence for the confirmed simulation-link and stale-time accounting defects is recorded in the audit; each test was observed failing with the old behavior and passing after the fix. Keyframe counter and stale-partial regressions pass in `racc-net`; the proxy send-result accounting regression also passes.
 9. PASS — the unconstrained default, separately labeled constrained scenarios, and the factor-of-two envelope regressions are documented and passed.
 10. PASS — corrected Phase 4 matrix, recorded seeds, and clearly superseded M2 tables are in `docs/TRANSPORT.md`.
 11. PASS — all simulator-only recovery models, scenarios, overhead and latency metrics, and a numeric recommendation are documented.
 12. PASS — no `racc-proto` or wire-format change; no NACK/FEC code in `racc-net`; models are in `racc-testkit`.
 13. PASS — the requested Mac statement/inference is recorded; other hardware entries were left untouched.
-14. BLOCKED-HUMAN — local commit identity is `rkohnmn`; commits `8ebab12` (code/models/regressions), `7d72c07` (audit/docs), `beaf850` (acceptance status), and `ee5d68e` (trace cleanup) were authored locally. No push was attempted because this goal explicitly prohibits network access. A network-enabled human must push normally to `origin main` after reviewing the blocked loopback check.
+14. BLOCKED-HUMAN — local commit identity is `rkohnmn`; commits `8ebab12` (code/models/regressions), `7d72c07` (audit/docs), `beaf850` (acceptance status), `ee5d68e` (trace cleanup), and `eac92b1` (proxy send accounting) were authored locally. No push was attempted because this goal explicitly prohibits network access. A network-enabled human must push normally to `origin main` after reviewing the blocked loopback check.
 
 #### Root cause and hypothesis verdicts
 
