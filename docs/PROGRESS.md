@@ -19,6 +19,7 @@ Probe date: 2026-10-06 (America/New_York).
 | M0.5 Housekeeping and publish | Complete | [VERIFIED-RUN] M0.5 checks passed; `main` was pushed to the empty requested origin. |
 | M1 Protocol | Complete | [VERIFIED-RUN] Protocol tests, documentation, cargo-deny, scripts, and compile-only target checks passed; see the M1 report. |
 | M2 Transport | Complete | [VERIFIED-RUN] M2 acceptance checks 1–13 passed on Windows 10.0.19045; see the final report below. Windows and Intel macOS target checks are COMPILE-ONLY. |
+| M2.5 Transport audit | Complete | [VERIFIED-RUN] All 14 M2.5 acceptance checks passed; the audit and final evidence are recorded below and were pushed to origin/main. No M3 work was started. |
 | M3 Topology and session logic | Not started | [UNVERIFIED] |
 | M4a UI toolkit spike | Not started | [UNVERIFIED] |
 | M4b UI shell | Not started | [UNVERIFIED] |
@@ -311,7 +312,7 @@ At tested 0.5% iid loss, v0 recovery is already unacceptable for interactive vie
 
 M3 starts from the existing racc-topology, racc-session and racc-telemetry workspace stubs and the v0 display/control types in racc-proto. Implement display modeling and topology diffs, monitor-switch state and epoch handling with fake capture/encoder backends, coordinate math, counters and event types. Add the listed switch/loss/removed-display/rapid-switch/coordinate tests. No M3 work was started.
 
-### 2026-10-06 — M2.5 transport audit; local acceptance verified
+### 2026-10-06 — M2.5 transport audit; acceptance complete
 
 - [VERIFIED-RUN] Completed the analytic model, deterministic trace, corrected default-link model, constrained scenarios, 8x/4x matrices, and simulator-only NACK/FEC comparison. `docs/TRANSPORT_AUDIT.md` and `docs/TRANSPORT.md` contain the seeded results and recommendation. No M3 work was started.
 - [VERIFIED-RUN] The corrected 600-second default-link regressions passed for 480p/720p at 0.1%, 0.25% and 0.5% IID loss; the old 102%-bitrate default was temporarily restored and the no-tail-drop regression failed as expected, then the correction was restored and passed. The stale-picture accumulation regression also failed with the old cap and passed after fixing the additive accounting.
@@ -339,7 +340,7 @@ M3 starts from the existing racc-topology, racc-session and racc-telemetry works
 11. PASS — all simulator-only recovery models, scenarios, overhead and latency metrics, and a numeric recommendation are documented.
 12. PASS — no `racc-proto` or wire-format change; no NACK/FEC code in `racc-net`; models are in `racc-testkit`.
 13. PASS — the requested Mac statement/inference is recorded; other hardware entries were left untouched.
-14. BLOCKED-HUMAN — local commit identity is `rkohnmn`; commits `8ebab12` (code/models/regressions), `7d72c07` (audit/docs), `beaf850` (acceptance status), `ee5d68e` (trace cleanup), `eac92b1` (proxy send accounting), `39d4354` and `979a2e9` (verification records) were authored locally. No push was attempted because this goal explicitly prohibits network access. The normal push to `origin main` therefore remains BLOCKED-HUMAN pending authorization to override that constraint.
+14. PASS — local commit identity is `rkohnmn`; commits `8ebab12` (code/models/regressions), `7d72c07` (audit/docs), `beaf850` (acceptance status), `ee5d68e` (trace cleanup), `eac92b1` (proxy send accounting), `39d4354`, `979a2e9`, and `c49b04b` (final local evidence) were authored locally. After the user explicitly authorized overriding the no-network constraint for this required action, `git push origin HEAD:main` completed as a non-forced fast-forward from `d32a27d` to `c49b04b`. The final acceptance-status documentation was subsequently published with a second normal, non-forced fast-forward.
 
 #### Root cause and hypothesis verdicts
 

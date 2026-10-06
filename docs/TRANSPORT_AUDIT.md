@@ -1,6 +1,6 @@
 # M2.5 Transport Audit
 
-Status: audit and measurement work complete; all local acceptance checks pass. The normal push is BLOCKED-HUMAN because this goal forbids network access. The corrected real-UDP loopback test passed in the final full workspace and both check-all runs. See question 18 and the final acceptance report in docs/PROGRESS.md. No M3 work is included.
+Status: audit and measurement work complete; all 14 M2.5 acceptance checks pass. The corrected real-UDP loopback test passed in the final full workspace and both check-all runs. The M2.5 commits were published to origin/main with a normal, non-forced fast-forward after the user authorized overriding the no-network restriction for that push. See question 18 and the final acceptance report in docs/PROGRESS.md. No M3 work is included.
 
 ## Phase 1 — analytic baseline
 
@@ -237,4 +237,4 @@ For the current implementation, define v0 acceptable as >=90% delivered and <=10
 
 ## Final acceptance checklist
 
-The 14 M2.5 acceptance checks and evidence are appended to `docs/PROGRESS.md`. Local checks 1–13 pass; check 14 remains BLOCKED-HUMAN solely because the no-network constraint prevents a normal push.
+All 14 M2.5 acceptance checks pass; detailed evidence is recorded in `docs/PROGRESS.md`. The required push to origin/main completed as a normal, non-forced fast-forward.
