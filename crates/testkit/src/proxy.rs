@@ -1,4 +1,5 @@
 use crate::ImpairmentProfile;
+use std::io;
 use std::net::{SocketAddr, UdpSocket};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -10,8 +11,10 @@ use std::time::Duration;
 pub struct ProxyStats {
     /// Source datagrams received from the sender.
     pub received: u64,
-    /// Datagrams forwarded to the viewer.
+    /// Datagrams successfully written to the viewer socket.
     pub forwarded: u64,
+    /// Forwarding attempts rejected by the local socket.
+    pub send_errors: u64,
     /// Datagrams dropped by the seeded loss profile.
     pub lost: u64,
     /// Additional copies forwarded.
@@ -26,6 +29,7 @@ pub struct LoopbackUdpProxy {
     stop: Arc<AtomicBool>,
     received: Arc<AtomicU64>,
     forwarded: Arc<AtomicU64>,
+    send_errors: Arc<AtomicU64>,
     lost: Arc<AtomicU64>,
     duplicated: Arc<AtomicU64>,
     reordered: Arc<AtomicU64>,
@@ -45,12 +49,14 @@ impl LoopbackUdpProxy {
         let stop = Arc::new(AtomicBool::new(false));
         let received = Arc::new(AtomicU64::new(0));
         let forwarded = Arc::new(AtomicU64::new(0));
+        let send_errors = Arc::new(AtomicU64::new(0));
         let lost = Arc::new(AtomicU64::new(0));
         let duplicated = Arc::new(AtomicU64::new(0));
         let reordered = Arc::new(AtomicU64::new(0));
         let thread_stop = Arc::clone(&stop);
         let thread_received = Arc::clone(&received);
         let thread_forwarded = Arc::clone(&forwarded);
+        let thread_send_errors = Arc::clone(&send_errors);
         let thread_lost = Arc::clone(&lost);
         let thread_duplicated = Arc::clone(&duplicated);
         let thread_reordered = Arc::clone(&reordered);
@@ -66,6 +72,7 @@ impl LoopbackUdpProxy {
                         stop: thread_stop,
                         received: thread_received,
                         forwarded: thread_forwarded,
+                        send_errors: thread_send_errors,
                         lost: thread_lost,
                         duplicated: thread_duplicated,
                         reordered: thread_reordered,
@@ -77,6 +84,7 @@ impl LoopbackUdpProxy {
             stop,
             received,
             forwarded,
+            send_errors,
             lost,
             duplicated,
             reordered,
@@ -94,6 +102,7 @@ impl LoopbackUdpProxy {
         ProxyStats {
             received: self.received.load(Ordering::Relaxed),
             forwarded: self.forwarded.load(Ordering::Relaxed),
+            send_errors: self.send_errors.load(Ordering::Relaxed),
             lost: self.lost.load(Ordering::Relaxed),
             duplicated: self.duplicated.load(Ordering::Relaxed),
             reordered_pairs: self.reordered.load(Ordering::Relaxed),
@@ -124,6 +133,7 @@ struct ProxyContext {
     stop: Arc<AtomicBool>,
     received: Arc<AtomicU64>,
     forwarded: Arc<AtomicU64>,
+    send_errors: Arc<AtomicU64>,
     lost: Arc<AtomicU64>,
     duplicated: Arc<AtomicU64>,
     reordered: Arc<AtomicU64>,
@@ -137,6 +147,7 @@ fn proxy_loop(socket: UdpSocket, context: ProxyContext) {
         stop,
         received,
         forwarded,
+        send_errors,
         lost,
         duplicated,
         reordered,
@@ -144,6 +155,14 @@ fn proxy_loop(socket: UdpSocket, context: ProxyContext) {
     let mut rng = ProxyRng::new(seed);
     let mut pending: Option<Vec<u8>> = None;
     let mut buffer = [0u8; 2048];
+    let send = |packet: &[u8]| {
+        record_send_result(
+            socket.send_to(packet, target),
+            packet.len(),
+            &forwarded,
+            &send_errors,
+        )
+    };
     while !stop.load(Ordering::Acquire) {
         match socket.recv_from(&mut buffer) {
             Ok((length, _source)) => {
@@ -159,29 +178,26 @@ fn proxy_loop(socket: UdpSocket, context: ProxyContext) {
                 let packet = packet.to_vec();
                 if rng.probability(profile.reorder_probability_ppm) {
                     if let Some(previous) = pending.take() {
-                        let _ = socket.send_to(&packet, target);
-                        forwarded.fetch_add(1, Ordering::Relaxed);
-                        let _ = socket.send_to(&previous, target);
-                        forwarded.fetch_add(1, Ordering::Relaxed);
-                        reordered.fetch_add(1, Ordering::Relaxed);
+                        let first_ok = send(&packet);
+                        let second_ok = send(&previous);
+                        if first_ok && second_ok {
+                            reordered.fetch_add(1, Ordering::Relaxed);
+                        }
                     } else {
                         pending = Some(packet);
                     }
                     continue;
                 }
                 if let Some(previous) = pending.take() {
-                    let _ = socket.send_to(packet.as_slice(), target);
-                    forwarded.fetch_add(1, Ordering::Relaxed);
-                    let _ = socket.send_to(previous.as_slice(), target);
-                    forwarded.fetch_add(1, Ordering::Relaxed);
-                    reordered.fetch_add(1, Ordering::Relaxed);
+                    let first_ok = send(packet.as_slice());
+                    let second_ok = send(previous.as_slice());
+                    if first_ok && second_ok {
+                        reordered.fetch_add(1, Ordering::Relaxed);
+                    }
                 } else {
-                    let _ = socket.send_to(packet.as_slice(), target);
-                    forwarded.fetch_add(1, Ordering::Relaxed);
+                    let _ = send(packet.as_slice());
                 }
-                if rng.probability(profile.duplicate_probability_ppm) {
-                    let _ = socket.send_to(packet.as_slice(), target);
-                    forwarded.fetch_add(1, Ordering::Relaxed);
+                if rng.probability(profile.duplicate_probability_ppm) && send(packet.as_slice()) {
                     duplicated.fetch_add(1, Ordering::Relaxed);
                 }
             }
@@ -192,19 +208,55 @@ fn proxy_loop(socket: UdpSocket, context: ProxyContext) {
                 ) =>
             {
                 if let Some(previous) = pending.take() {
-                    let _ = socket.send_to(&previous, target);
-                    forwarded.fetch_add(1, Ordering::Relaxed);
+                    let _ = send(&previous);
                 }
             }
             Err(_) => break,
         }
     }
     if let Some(previous) = pending {
-        let _ = socket.send_to(&previous, target);
-        forwarded.fetch_add(1, Ordering::Relaxed);
+        let _ = send(&previous);
     }
 }
 
+fn record_send_result(
+    result: io::Result<usize>,
+    expected_len: usize,
+    forwarded: &AtomicU64,
+    send_errors: &AtomicU64,
+) -> bool {
+    match result {
+        Ok(sent) if sent == expected_len => {
+            forwarded.fetch_add(1, Ordering::Relaxed);
+            true
+        }
+        Ok(_) | Err(_) => {
+            send_errors.fetch_add(1, Ordering::Relaxed);
+            false
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn proxy_counters_distinguish_successful_writes_from_send_errors() {
+        let forwarded = AtomicU64::new(0);
+        let send_errors = AtomicU64::new(0);
+        assert!(record_send_result(Ok(5), 5, &forwarded, &send_errors));
+        assert!(!record_send_result(
+            Err(io::Error::from(io::ErrorKind::WouldBlock)),
+            5,
+            &forwarded,
+            &send_errors,
+        ));
+        assert!(!record_send_result(Ok(4), 5, &forwarded, &send_errors));
+        assert_eq!(forwarded.load(Ordering::Relaxed), 1);
+        assert_eq!(send_errors.load(Ordering::Relaxed), 2);
+    }
+}
 #[derive(Clone, Debug)]
 struct ProxyRng(u64);
 
