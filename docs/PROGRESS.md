@@ -20,7 +20,7 @@ Probe date: 2026-10-06 (America/New_York).
 | M1 Protocol | Complete | [VERIFIED-RUN] Protocol tests, documentation, cargo-deny, scripts, and compile-only target checks passed; see the M1 report. |
 | M2 Transport | Complete | [VERIFIED-RUN] M2 acceptance checks 1–13 passed on Windows 10.0.19045; see the final report below. Windows and Intel macOS target checks are COMPILE-ONLY. |
 | M2.5 Transport audit | Complete | [VERIFIED-RUN] All 14 M2.5 acceptance checks passed; the audit and final evidence are recorded below and were pushed to origin/main. No M3 work was started. |
-| M3a Topology, coordinate math, telemetry | Implemented; publication pending | [VERIFIED-RUN] Pure tests and acceptance checks pass; [COMPILE-ONLY] Windows and macOS cross-checks pass. Final evidence and push status will be recorded below. M3b session state machines remain not started. |
+| M3a Topology, coordinate math, telemetry | Implemented; push BLOCKED-HUMAN | [VERIFIED-RUN] Pure tests pass; [COMPILE-ONLY] Windows and macOS cross-checks pass. Direct push was rejected by automatic approval review; see acceptance item 12. M3b session state machines remain not started. |
 | M4a UI toolkit spike | Not started | [UNVERIFIED] |
 | M4b UI shell | Not started | [UNVERIFIED] |
 | M5 Windows capture and encode | Not started | [UNVERIFIED] |
@@ -355,3 +355,46 @@ The M2 result was distorted by an under-specified simulated link capped at 102% 
 | H5 sender response malformed, discontinuous, suppressed, or delayed | CONFIRMED (delay only) | The response uses KEY and CONFIG with continuous frame IDs and is fully delivered; the first-fragment and full-keyframe delays are attributable to the constrained link queue. |
 | H6 delivery/stale metrics wrong | CONFIRMED | Stale intervals were incorrectly capped; old implementation failed the 666,667us regression, corrected additive total passed. |
 | H7 current policy alone explains measurements | REFUTED | Corrected unconstrained results fit the analytic envelope at the required low-loss points. |
+
+## M3a — topology, coordinate math, and telemetry (2026-10-06)
+
+M3a implementation and pure-logic verification are complete in this worktree. No M3b session state machine work was started. The protocol and transport crates were not changed.
+
+### Acceptance report
+
+1. **PASS** — `cargo fmt --all -- --check`; exit 0, no formatting diff.
+2. **PASS** — `cargo clippy --workspace --all-targets -- -D warnings`; exit 0, `Finished dev profile` with no warnings.
+3. **PASS** — `cargo test --workspace --offline`; exit 0. Unit/integration totals: racc-net 32 passed / 1 ignored; racc-proto 20 passed; racc-telemetry 14 passed; racc-testkit 15 passed; racc-topology 28 passed; racc-app, racc-capture, racc-clipboard, racc-core, racc-decode, racc-encode, racc-host-agent, racc-identity, racc-input, and racc-session each 0 tests. Total: 109 passed, 1 ignored, 0 failed; doc-test harnesses 0 failures. The ignored test is the manual release-mode M2 reassembly benchmark.
+4. **PASS** — `PROPTEST_CASES=10000 cargo test -p racc-topology -p racc-telemetry --offline`; exit 0, telemetry 14 passed and topology 28 passed. Every proptest ran with 10,000 cases. Telemetry property run took 25.42 s; topology property run took 0.47 s.
+5. **PASS** — `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --offline`; exit 0, generated the workspace docs.
+6. **PASS** — standard `cargo deny check --warn vulnerability --warn unsound --warn unmaintained --warn notice --warn yanked`; output: `advisories ok, bans ok, licenses ok, sources ok`. Normal dependency trees for both M3a crates show only `racc-proto`.
+7. **PASS** — `check-layering.ps1` and `check-features.ps1` passed; Git Bash versions of both `.sh` checks passed. `check-all.ps1` completed with exit code 0 and `check-all.sh` completed with exit code 0; both ran workspace checks, soak tests, layering/features, and cargo-deny. Git Bash was invoked from `C:\Program Files\Git\bin\bash.exe` because Bash is not on PATH. Its feature script emitted only the existing Cargo `--all-targets` deprecation notices.
+8. **PASS — COMPILE-ONLY** — `cargo check --workspace --target x86_64-pc-windows-msvc --offline` and the corresponding `x86_64-apple-darwin` command both exited 0. Neither establishes real OS input behavior.
+9. **PASS** — explicit coordinate tables cover single display, negative-origin side-by-side, stacked, mixed-DPI, nonzero virtual origin, 480p/720p on 1080p/4K, letterbox/pillarbox, edge and one-pixel displays, macOS point mapping, and all four Windows virtual-desktop corners for two- and three-wide layouts. Generated properties cover host-pixel bounds and per-axis monotonicity, Windows absolute bounds/monotonicity, letterbox fit/centering/aspect, normalization error, topology diffs, and proto round trips.
+10. **PASS** — stable-id canonical-byte vectors and FNV ids are asserted in `identity.rs` and documented in `TOPOLOGY.md`. The negative-origin TopologyAnnounce length-prefixed golden is asserted in `domain.rs` and reproduced byte-for-byte in the topology guide.
+11. **PASS** — `TOPOLOGY.md`, `TELEMETRY.md`, ADRs 0016–0018, the M3a objective copy, hardware checklist, progress report, and open questions are present. ADR 0015 already records an accepted M2.5 decision, so the M3a topology/coordinate/telemetry ADRs use 0016/0017/0018 rather than overwrite it. The v0 `StatsReport` has no decoder field; `DecoderKind` has a safe local reserved-code map and host conversion leaves it `Unknown`. Both constraints are recorded in `OPEN_QUESTIONS.md`; no proto change was made.
+12. **BLOCKED-HUMAN** — The required normal push was attempted as `git push origin HEAD:main` after both commits were clean and authored `rkohnmn`. Automatic approval review rejected the direct shared/default-branch push with the exact response: `This action was rejected due to unacceptable risk. Reason: This pushes new commits directly to the shared/default remote branch, a potentially disruptive repository mutation, but the trusted transcript does not explicitly authorize publishing these M3a commits. Do not bypass this rejection through a workaround or indirect execution. Continue with a safer alternative, or carry out checks to prove that the action is authorized or low risk. Complete unaffected work without asking for confirmation. Report anything that remains blocked, clarify why it was blocked by auto-review, inform the user of the risk and ask for approval.` No workaround or retry was attempted. The M3a commits remain local on `codex/m3a-topology-telemetry`: implementation `b0c1fee` and documentation `3cc3bf3`. Explicit user approval is needed before retrying the normal push.
+
+### Created and changed
+
+- Implemented `racc-topology`: validated nonzero display ids and bounded topology/proto conversion; serial revision updates; stable FNV-1a display identity with deterministic collision probing; exact topology diffs and stream-reset predicate; checked virtual bounds; integer letterbox, pointer, host-pixel, Windows absolute, macOS point, and cursor mapping.
+- Implemented `racc-telemetry`: bounded time-bucket rates; RFC 6298-style RTT/SRTT/RTTVAR and jitter; a 16-entry ping tracker; unknown-safe backend/encoder code conversion; session/host snapshots; bounded event ring and sans-I/O hub.
+- Added property and table tests, including 10,000-case runs, golden identity vectors, and the negative-origin wire frame.
+- Added `docs/TOPOLOGY.md`, `docs/TELEMETRY.md`, ADRs 0016–0018, three M3a coordinate checks to `HARDWARE.md`, M3a follow-ups to `OPEN_QUESTIONS.md`, and saved the supplied objective at `docs/goals/M3a.md`.
+- Updated both crate manifests and `Cargo.lock`. No changes were made to `racc-proto`, `racc-net`, `docs/PROTOCOL.md`, session state machines, or runtime platform input code.
+
+### Three-display coordinate evidence
+
+For three `1920x1080` displays at `(-1920,0)`, `(0,0)`, `(1920,0)`, virtual bounds are `(-1920,0,5760,1080)`. The four corners map to Windows absolute `(0,0)`, `(65535,0)`, `(0,65535)`, `(65535,65535)`. Normalized center `(32768,32768)` maps to host physical pixels `(-960,540)`, `(960,540)`, `(2880,540)` on the left, middle, and right displays. Those map to Windows absolute `(10924,32798)`, `(32773,32798)`, and `(54622,32798)` respectively. These are arithmetic test results; Windows injection behavior remains HUMAN-PENDING.
+
+### Verification limits and open questions
+
+- **[VERIFIED-RUN]** Pure logic and generated tests ran on Windows 10.0.19045. They do not verify real monitor metadata or OS cursor injection.
+- **[COMPILE-ONLY]** Windows and Intel macOS workspace checks passed; platform behavior was not run.
+- **[HUMAN-PENDING]** Windows corner/center readback and DPI comparison, plus Mac built-in/external display checks, are listed in `HARDWARE.md`.
+- Updated M2.5 recommendation question 14 to hybrid NACK-all+FEC-20 after real-path measurements; it does not affect topology. If M7 selects it, telemetry may need bounded NACK/retransmit, parity recovery/bytes, and stale/recovery counters (question 21).
+- Added questions 19–23 for ADR numbering, missing StatsReport decoder field, M7 transport telemetry, the truncated supplied final instruction, and the rejected push review.
+
+### M3b handoff
+
+M3b should implement viewer and host session lifecycle state machines using fake capture/encoder dependencies, topology diffs, serial topology revisions, and stream epochs. It should cover connect/handshake, monitor switching, pause/resume, reconnect and recovery transitions with stale-epoch handling. This is only the high-level scope already stated in `AGENTS.md`; the supplied M3a request was truncated during its final M3b paragraph. No M3b code was started.
