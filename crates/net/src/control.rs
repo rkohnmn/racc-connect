@@ -532,6 +532,18 @@ mod tests {
     }
 
     #[test]
+    fn m2_control_defaults_match_the_transport_contract() {
+        assert_eq!(DEFAULT_KEEPALIVE_IDLE, Duration::from_secs(10));
+        assert_eq!(DEFAULT_CONTROL_WRITE_TIMEOUT, Duration::from_secs(2));
+        assert_eq!(DEFAULT_CONTROL_READ_TIMEOUT, Duration::from_secs(5));
+        let defaults = ControlSettings::default();
+        assert_eq!(defaults.keepalive_idle, Duration::from_secs(10));
+        assert_eq!(defaults.write_timeout, Duration::from_secs(2));
+        assert_eq!(defaults.read_timeout, Some(Duration::from_secs(5)));
+        assert_eq!(defaults.connect_timeout, Duration::from_secs(2));
+    }
+
+    #[test]
     fn read_timeout_is_typed_and_socket_options_are_applied() {
         let result = connected_pair(Some(Duration::from_millis(20)));
         assert!(result.is_ok());
