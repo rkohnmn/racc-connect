@@ -213,6 +213,10 @@ version = "0.1.0"
 [[package]]
 name = "racc-telemetry"
 version = "0.1.0"
+dependencies = [
+ "proptest",
+ "racc-proto",
+]
 
 [[package]]
 name = "racc-testkit"
@@ -225,6 +229,10 @@ dependencies = [
 [[package]]
 name = "racc-topology"
 version = "0.1.0"
+dependencies = [
+ "proptest",
+ "racc-proto",
+]
 
 [[package]]
 name = "rand"
