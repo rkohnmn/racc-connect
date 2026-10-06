@@ -339,7 +339,7 @@ M3 starts from the existing racc-topology, racc-session and racc-telemetry works
 11. PASS — all simulator-only recovery models, scenarios, overhead and latency metrics, and a numeric recommendation are documented.
 12. PASS — no `racc-proto` or wire-format change; no NACK/FEC code in `racc-net`; models are in `racc-testkit`.
 13. PASS — the requested Mac statement/inference is recorded; other hardware entries were left untouched.
-14. BLOCKED-HUMAN — local commit identity is `rkohnmn`; no push was attempted because this goal explicitly prohibits network access. The local audit commits are recorded in the Git log; a network-enabled human must push normally to `origin main` after reviewing the blocked loopback check.
+14. BLOCKED-HUMAN — local commit identity is `rkohnmn`; commits `8ebab12` (code/models/regressions) and `7d72c07` (audit/docs) were authored locally. No push was attempted because this goal explicitly prohibits network access. A network-enabled human must push normally to `origin main` after reviewing the blocked loopback check.
 
 #### Root cause and hypothesis verdicts
 
