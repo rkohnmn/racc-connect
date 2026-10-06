@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 /// Probability denominator used by impairment profiles.
 pub const PROBABILITY_SCALE: u32 = 1_000_000;
 /// Default finite virtual-network packet queue budget.
-pub const DEFAULT_SIMULATION_QUEUE_BYTES: usize = 4 * 1024 * 1024;
+pub const DEFAULT_SIMULATION_QUEUE_BYTES: usize = 64 * 1024 * 1024;
 
 /// Configurable deterministic packet impairment profile.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -72,8 +72,14 @@ pub struct ImpairmentStats {
     pub queue_drops: u64,
     /// Datagrams delivered after the caller advanced the virtual clock.
     pub delivered: u64,
+    /// Copies accepted into the virtual network for serialization and delivery.
+    pub scheduled: u64,
     /// Peak scheduled bytes in the finite queue.
     pub peak_queue_bytes: usize,
+    /// Sum of serialization queue wait across scheduled datagrams, in microseconds.
+    pub total_queue_delay_us: u64,
+    /// Maximum serialization queue wait observed, in microseconds.
+    pub max_queue_delay_us: u64,
 }
 
 /// Virtual-clock, seeded packet network with loss, reordering, duplication,
@@ -137,18 +143,6 @@ impl SimulatedNetwork {
             return false;
         }
 
-        let base_time = now_us.max(self.next_rate_available_us);
-        if let Some(rate) = self.profile.bitrate_limit_bps.filter(|rate| *rate > 0) {
-            let numerator = u128::try_from(bytes.len())
-                .unwrap_or(u128::MAX)
-                .saturating_mul(8_000_000);
-            let duration = numerator.saturating_add(u128::from(rate - 1)) / u128::from(rate);
-            self.next_rate_available_us =
-                base_time.saturating_add(u64::try_from(duration).unwrap_or(u64::MAX));
-        } else {
-            self.next_rate_available_us = base_time;
-        }
-
         let jitter = self.rng.signed(self.profile.jitter_us);
         let delay = if jitter < 0 {
             self.profile
@@ -163,13 +157,35 @@ impl SimulatedNetwork {
         } else {
             0
         };
-        let first_due = base_time
-            .saturating_add(delay)
-            .saturating_add(reorder_extra);
-        self.schedule(first_due, bytes.to_vec());
+
+        let copies = if duplicate { 2usize } else { 1usize };
+        for copy_index in 0..copies {
+            let service_start = now_us.max(self.next_rate_available_us);
+            let queue_wait = service_start.saturating_sub(now_us);
+            self.stats.total_queue_delay_us =
+                self.stats.total_queue_delay_us.saturating_add(queue_wait);
+            self.stats.max_queue_delay_us = self.stats.max_queue_delay_us.max(queue_wait);
+            let service_duration = if let Some(rate) =
+                self.profile.bitrate_limit_bps.filter(|rate| *rate > 0)
+            {
+                let numerator = u128::try_from(bytes.len())
+                    .unwrap_or(u128::MAX)
+                    .saturating_mul(8_000_000);
+                let duration = numerator.saturating_add(u128::from(rate - 1)) / u128::from(rate);
+                u64::try_from(duration).unwrap_or(u64::MAX)
+            } else {
+                0
+            };
+            let service_complete = service_start.saturating_add(service_duration);
+            self.next_rate_available_us = service_complete;
+            let arrival = service_complete
+                .saturating_add(delay)
+                .saturating_add(reorder_extra)
+                .saturating_add(u64::try_from(copy_index).unwrap_or(u64::MAX));
+            self.schedule(arrival, bytes.to_vec());
+        }
         if duplicate {
             self.stats.duplicates = self.stats.duplicates.saturating_add(1);
-            self.schedule(first_due.saturating_add(1), bytes.to_vec());
         }
         self.stats.peak_queue_bytes = self.stats.peak_queue_bytes.max(self.queue_bytes);
         true
@@ -210,6 +226,7 @@ impl SimulatedNetwork {
     fn schedule(&mut self, at_us: u64, bytes: Vec<u8>) {
         let sequence = self.next_sequence;
         self.next_sequence = self.next_sequence.saturating_add(1);
+        self.stats.scheduled = self.stats.scheduled.saturating_add(1);
         self.queue_bytes = self.queue_bytes.saturating_add(bytes.len());
         self.queue.insert((at_us, sequence), bytes);
     }
@@ -281,6 +298,24 @@ mod tests {
         let b_due = b.advance_to(u64::MAX);
         assert_eq!(a_due, b_due);
         assert_eq!(a.stats(), b.stats());
+    }
+
+    #[test]
+    fn arrivals_include_serialization_time_and_duplicate_uses_link_capacity() {
+        let profile = ImpairmentProfile {
+            bitrate_limit_bps: Some(8_000),
+            duplicate_probability_ppm: PROBABILITY_SCALE,
+            one_way_delay_us: 1_000,
+            max_queue_bytes: 1024,
+            ..ImpairmentProfile::default()
+        };
+        let mut network = SimulatedNetwork::new(7, profile);
+        assert!(network.send(0, &[0; 10])); // 10 ms per copy at 8 kbps.
+        let arrivals = network.advance_to(u64::MAX);
+        assert_eq!(arrivals.len(), 2);
+        assert_eq!(arrivals[0].at_us, 11_000);
+        assert_eq!(arrivals[1].at_us, 21_001);
+        assert_eq!(network.stats().max_queue_delay_us, 10_000);
     }
 
     #[test]

@@ -113,6 +113,22 @@ pub struct ReassemblyCounters {
     pub dropped_waiting_key: u64,
     /// Frames discarded because their fragments were inconsistent.
     pub dropped_inconsistent: u64,
+    /// Keyframes for which all fragments arrived.
+    pub keyframes_completed: u64,
+    /// Keyframes delivered in order to the decoder.
+    pub keyframes_delivered: u64,
+    /// Partial keyframes discarded as incomplete.
+    pub keyframes_dropped_incomplete: u64,
+    /// Partial keyframes which reached the 100 ms idle timeout.
+    pub keyframes_timed_out: u64,
+    /// Older partial keyframes discarded after the reorder hold elapsed.
+    pub keyframes_dropped_reorder: u64,
+    /// Older partial keyframes discarded after a newer keyframe was accepted.
+    pub keyframes_superseded: u64,
+    /// Partial or completed keyframes evicted by a reassembly bound.
+    pub keyframes_dropped_evicted: u64,
+    /// Partial keyframes discarded for inconsistent fragment metadata.
+    pub keyframes_dropped_inconsistent: u64,
     /// In-flight frames evicted by a bound.
     pub dropped_evicted: u64,
     /// Whole-frame gaps declared from frame identifiers.
@@ -544,6 +560,10 @@ impl Reassembler {
         self.state.inflight_bytes = self.state.inflight_bytes.saturating_add(bytes.len());
         self.state.counters.frames_completed =
             self.state.counters.frames_completed.saturating_add(1);
+        if metadata.keyframe {
+            self.state.counters.keyframes_completed =
+                self.state.counters.keyframes_completed.saturating_add(1);
+        }
         self.state.loss.record(
             now_us,
             LossSample {
@@ -611,6 +631,19 @@ impl Reassembler {
                 } else {
                     self.require_keyframe(now_us, events);
                     for id in older_partials {
+                        if self
+                            .state
+                            .partial
+                            .iter()
+                            .find(|partial| partial.metadata.frame_id == id)
+                            .is_some_and(|partial| partial.metadata.keyframe)
+                        {
+                            self.state.counters.keyframes_dropped_reorder = self
+                                .state
+                                .counters
+                                .keyframes_dropped_reorder
+                                .saturating_add(1);
+                        }
                         self.drop_partial(id, ReassemblyReason::Incomplete, now_us);
                     }
                 }
@@ -648,6 +681,10 @@ impl Reassembler {
             self.state.last_delivered = Some(candidate_id);
             self.state.counters.frames_delivered =
                 self.state.counters.frames_delivered.saturating_add(1);
+            if completed.data.keyframe {
+                self.state.counters.keyframes_delivered =
+                    self.state.counters.keyframes_delivered.saturating_add(1);
+            }
             events.push(ReassemblyEvent::FrameReady(completed.data));
             self.refresh_current();
         }
@@ -736,6 +773,32 @@ impl Reassembler {
                         ..LossSample::default()
                     },
                 );
+                if frame.metadata.keyframe {
+                    match reason {
+                        ReassemblyReason::Incomplete => {
+                            self.state.counters.keyframes_dropped_incomplete = self
+                                .state
+                                .counters
+                                .keyframes_dropped_incomplete
+                                .saturating_add(1);
+                        }
+                        ReassemblyReason::Inconsistent => {
+                            self.state.counters.keyframes_dropped_inconsistent = self
+                                .state
+                                .counters
+                                .keyframes_dropped_inconsistent
+                                .saturating_add(1);
+                        }
+                        ReassemblyReason::Evicted => {
+                            self.state.counters.keyframes_dropped_evicted = self
+                                .state
+                                .counters
+                                .keyframes_dropped_evicted
+                                .saturating_add(1);
+                        }
+                        _ => {}
+                    }
+                }
                 match reason {
                     ReassemblyReason::Incomplete => {
                         self.state.counters.dropped_incomplete =
@@ -774,9 +837,21 @@ impl Reassembler {
                     let id = p.metadata.frame_id;
                     self.drop_partial(id, ReassemblyReason::Evicted, now_us);
                 } else {
+                    let is_keyframe = self
+                        .state
+                        .completed
+                        .get(ci)
+                        .is_some_and(|frame| frame.data.keyframe);
                     self.drop_completed(ci);
                     self.state.counters.dropped_evicted =
                         self.state.counters.dropped_evicted.saturating_add(1);
+                    if is_keyframe {
+                        self.state.counters.keyframes_dropped_evicted = self
+                            .state
+                            .counters
+                            .keyframes_dropped_evicted
+                            .saturating_add(1);
+                    }
                 }
                 let _ = pi;
                 true
@@ -787,9 +862,21 @@ impl Reassembler {
                 true
             }
             (None, Some((ci, _))) => {
+                let is_keyframe = self
+                    .state
+                    .completed
+                    .get(ci)
+                    .is_some_and(|frame| frame.data.keyframe);
                 self.drop_completed(ci);
                 self.state.counters.dropped_evicted =
                     self.state.counters.dropped_evicted.saturating_add(1);
+                if is_keyframe {
+                    self.state.counters.keyframes_dropped_evicted = self
+                        .state
+                        .counters
+                        .keyframes_dropped_evicted
+                        .saturating_add(1);
+                }
                 true
             }
             (None, None) => {
@@ -801,14 +888,18 @@ impl Reassembler {
 
     fn evict_timeouts(&mut self, now_us: u64, events: &mut Vec<ReassemblyEvent>) {
         let timeout_us = REASSEMBLY_TIMEOUT_MS.saturating_mul(MILLIS_TO_MICROS);
-        let expired: Vec<u32> = self
+        let expired: Vec<(u32, bool)> = self
             .state
             .partial
             .iter()
             .filter(|frame| now_us.saturating_sub(frame.last_activity_us) >= timeout_us)
-            .map(|frame| frame.metadata.frame_id)
+            .map(|frame| (frame.metadata.frame_id, frame.metadata.keyframe))
             .collect();
-        for frame_id in expired {
+        for (frame_id, keyframe) in expired {
+            if keyframe {
+                self.state.counters.keyframes_timed_out =
+                    self.state.counters.keyframes_timed_out.saturating_add(1);
+            }
             self.drop_partial(frame_id, ReassemblyReason::Incomplete, now_us);
             self.require_keyframe(now_us, events);
         }
@@ -823,6 +914,16 @@ impl Reassembler {
             .map(|frame| frame.metadata.frame_id)
             .collect();
         for id in older_partial {
+            if self
+                .state
+                .partial
+                .iter()
+                .find(|partial| partial.metadata.frame_id == id)
+                .is_some_and(|partial| partial.metadata.keyframe)
+            {
+                self.state.counters.keyframes_superseded =
+                    self.state.counters.keyframes_superseded.saturating_add(1);
+            }
             self.drop_partial(id, ReassemblyReason::Incomplete, now_us);
         }
         let older_completed: Vec<usize> = self
@@ -1189,6 +1290,61 @@ mod tests {
         assert_eq!(stats.counters.dropped_gap, 1);
         assert_eq!(stats.counters.dropped_waiting_key, 2);
         assert!(!stats.need_keyframe);
+    }
+
+    #[test]
+    fn stale_older_partial_does_not_rearm_keyframe_request_after_recovery() {
+        let mut reassembler = Reassembler::new(7);
+        let initial_packet = one_fragment(0, true);
+        assert_eq!(
+            delivered(reassembler.push_datagram(&initial_packet, 0)).len(),
+            1
+        );
+        let older = sender_frame(1, false, 2 * MAX_VIDEO_PAYLOAD);
+        let older_packets = datagrams(&older);
+        let _ = reassembler.push_datagram(&older_packets[0], 1_000);
+        let newer_keyframe = sender_frame(2, true, 1);
+        let keyframe_packet = datagrams(&newer_keyframe).remove(0);
+        assert!(delivered(reassembler.push_datagram(&keyframe_packet, 2_000)).is_empty());
+        let recovered = delivered(reassembler.poll(10_000));
+        assert_eq!(recovered.len(), 1);
+        assert!(recovered[0].keyframe);
+        assert_eq!(recovered[0].frame_id, 2);
+
+        let late_old_fragment = reassembler.push_datagram(&older_packets[1], 11_000);
+        assert!(late_old_fragment
+            .iter()
+            .all(|event| !matches!(event, ReassemblyEvent::NeedKeyframe(7))));
+        let later_retry = reassembler.poll(500_000);
+        assert!(later_retry
+            .iter()
+            .all(|event| !matches!(event, ReassemblyEvent::NeedKeyframe(7))));
+        let stats = reassembler.stats(500_000);
+        assert!(!stats.need_keyframe);
+        assert_eq!(stats.counters.keyframe_requests, 0);
+        assert_eq!(stats.counters.dropped_incomplete, 1);
+        assert_eq!(stats.counters.late, 1);
+    }
+
+    #[test]
+    fn keyframe_specific_counters_distinguish_timeout_from_delivery() {
+        let frame = sender_frame(1, true, 2 * MAX_VIDEO_PAYLOAD);
+        let packets = datagrams(&frame);
+        let mut reassembler = Reassembler::new(frame.epoch);
+        let _ = reassembler.push_datagram(&packets[0], 0);
+        let _ = reassembler.poll(101_000);
+        let timed_out = reassembler.stats(101_000);
+        assert_eq!(timed_out.counters.keyframes_dropped_incomplete, 1);
+        assert_eq!(timed_out.counters.keyframes_timed_out, 1);
+        assert_eq!(timed_out.counters.keyframes_completed, 0);
+        assert_eq!(timed_out.counters.keyframes_delivered, 0);
+
+        let complete = sender_frame(2, true, 1);
+        let ready = delivered(reassembler.push_datagram(&datagrams(&complete)[0], 102_000));
+        assert_eq!(ready.len(), 1);
+        let recovered = reassembler.stats(102_000);
+        assert_eq!(recovered.counters.keyframes_completed, 1);
+        assert_eq!(recovered.counters.keyframes_delivered, 1);
     }
 
     #[test]

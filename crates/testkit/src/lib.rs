@@ -6,6 +6,7 @@ mod impairment;
 #[cfg(test)]
 mod loopback;
 mod proxy;
+pub mod sim;
 mod soak;
 
 #[cfg(test)]
@@ -16,4 +17,7 @@ pub use impairment::{
     DEFAULT_SIMULATION_QUEUE_BYTES, PROBABILITY_SCALE,
 };
 pub use proxy::{LoopbackUdpProxy, ProxyStats};
-pub use soak::{run_stream_soak, StreamSoakMetrics, StreamTier};
+pub use soak::{
+    run_stream_soak, run_stream_soak_with_options, run_stream_soak_with_trace,
+    run_stream_soak_with_trace_and_options, StreamSoakMetrics, StreamSoakOptions, StreamTier,
+};
