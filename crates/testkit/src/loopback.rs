@@ -4,6 +4,8 @@ use racc_net::{
     VideoTransportEvent, DEFAULT_FRAME_INTERVAL_US, THREAD_JOIN_TIMEOUT_MS,
 };
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -34,18 +36,6 @@ fn test_frame(frame_id: u32) -> SenderFrame {
     }
 }
 
-fn drain(receiver: &VideoReceiver, frames: &mut Vec<racc_net::FrameData>, requests: &mut u64) {
-    loop {
-        match receiver.recv_event(Duration::from_millis(1)) {
-            Ok(VideoTransportEvent::FrameReady(frame)) => frames.push(frame),
-            Ok(VideoTransportEvent::NeedKeyframe(_)) => *requests = requests.saturating_add(1),
-            Ok(VideoTransportEvent::Cursor(_)) => {}
-            Err(NetError::Timeout) => break,
-            Err(error) => panic!("loopback receiver failed: {error}"),
-        }
-    }
-}
-
 fn run_profile(
     loss_ppm: u32,
     seed: u64,
@@ -55,7 +45,7 @@ fn run_profile(
     u64,
     VideoSendMetrics,
 ) {
-    let mut receiver = match VideoReceiver::bind(
+    let receiver = match VideoReceiver::bind(
         SocketAddr::from(([127, 0, 0, 1], 0)),
         LOOPBACK,
         3,
@@ -93,37 +83,70 @@ fn run_profile(
     };
 
     let mut sender = sender;
-    let mut frames = Vec::new();
-    let mut request_events = 0u64;
+    let collector_stop = Arc::new(AtomicBool::new(false));
+    let collector_stop_worker = Arc::clone(&collector_stop);
+    let collector = thread::spawn(move || {
+        let mut frames = Vec::new();
+        let mut request_events = 0u64;
+        let mut idle_polls = 0u8;
+        loop {
+            match receiver.recv_event(Duration::from_millis(10)) {
+                Ok(VideoTransportEvent::FrameReady(frame)) => {
+                    frames.push(frame);
+                    idle_polls = 0;
+                }
+                Ok(VideoTransportEvent::NeedKeyframe(_)) => {
+                    request_events = request_events.saturating_add(1);
+                    idle_polls = 0;
+                }
+                Ok(VideoTransportEvent::Cursor(_)) => idle_polls = 0,
+                Err(NetError::Timeout) => {
+                    if collector_stop_worker.load(Ordering::Acquire) {
+                        idle_polls = idle_polls.saturating_add(1);
+                        if idle_polls >= 2 {
+                            break;
+                        }
+                    }
+                }
+                Err(error) => panic!("loopback receiver failed while collecting: {error}"),
+            }
+        }
+        (receiver, frames, request_events)
+    });
+
     let mut keyframe_metrics = VideoSendMetrics::default();
+    let mut send_error = None;
     for frame_id in 0..300u32 {
         let frame = test_frame(frame_id);
         let expected_keyframe = frame.keyframe;
-        let metrics = sender.send_frame(frame);
-        assert!(
-            metrics.is_ok(),
-            "video send failed for frame {frame_id}: {metrics:?}"
-        );
-        if let Ok(metrics) = metrics {
-            if expected_keyframe && metrics.bytes_sent > 200_000 {
-                keyframe_metrics = metrics;
+        match sender.send_frame(frame) {
+            Ok(metrics) => {
+                if expected_keyframe && metrics.bytes_sent > 200_000 {
+                    keyframe_metrics = metrics;
+                }
+            }
+            Err(error) => {
+                send_error = Some((frame_id, error));
+                break;
             }
         }
-        drain(&receiver, &mut frames, &mut request_events);
     }
 
-    let deadline = Instant::now() + Duration::from_millis(250);
-    while Instant::now() < deadline {
-        match receiver.recv_event(Duration::from_millis(10)) {
-            Ok(VideoTransportEvent::FrameReady(frame)) => frames.push(frame),
-            Ok(VideoTransportEvent::NeedKeyframe(_)) => {
-                request_events = request_events.saturating_add(1)
-            }
-            Ok(VideoTransportEvent::Cursor(_)) => {}
-            Err(NetError::Timeout) => {}
-            Err(error) => panic!("loopback receiver failed while draining: {error}"),
+    thread::sleep(Duration::from_millis(250));
+    collector_stop.store(true, Ordering::Release);
+    let collected = collector.join();
+    assert!(collected.is_ok(), "loopback collector thread panicked");
+    let (mut receiver, frames, request_events) = match collected {
+        Ok(value) => value,
+        Err(_) => {
+            return (
+                Vec::new(),
+                racc_net::ReassemblyStats::default(),
+                0,
+                keyframe_metrics,
+            )
         }
-    }
+    };
     let stats = receiver.reassembly_stats();
     assert!(stats.is_ok());
     let stats = stats.unwrap_or_default();
@@ -149,6 +172,7 @@ fn run_profile(
     assert!(proxy.close().is_ok());
     assert!(close_start.elapsed() < Duration::from_millis(THREAD_JOIN_TIMEOUT_MS));
     assert!(proxy.stats().received > 0);
+    assert!(send_error.is_none(), "video send failed: {send_error:?}");
     (frames, stats, request_events, keyframe_metrics)
 }
 
