@@ -1,0 +1,12 @@
+# Security-advisory findings are downgraded to warnings by the check scripts using --warn advisories.
+[advisories]
+version = 2
+ignore = []
+yanked = "warn"
+unmaintained = "all"
+unsound = "workspace"
+
+[licenses]
+version = 2
+allow = ["Apache-2.0", "MIT", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Unicode-3.0", "Zlib"]
+confidence-threshold = 0.93
