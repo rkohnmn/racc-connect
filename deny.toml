@@ -1,17 +1,19 @@
-# No external dependencies currently need a license allow entry. Add a verified
-# permissive license only when a real dependency requires it, with its reason.
-# GPL and AGPL are denied by omission from this explicit allowlist.
+# socket2 and its platform support declare MIT OR Apache-2.0. Both are
+# permissive; GPL and AGPL remain denied by omission from this allowlist.
 [advisories]
 yanked = "warn"
 
 [licenses]
-allow = []
+allow = ["MIT", "Apache-2.0"]
 confidence-threshold = 0.93
 private = { ignore = true }
 
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+# Private workspace crates use path dependencies to keep crate boundaries explicit.
+# Registry and Git wildcard versions remain denied.
+allow-wildcard-paths = true
 
 [sources]
 unknown-registry = "deny"

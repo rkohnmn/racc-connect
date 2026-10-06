@@ -3,3 +3,14 @@ name = "racc-net"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
+
+[features]
+default = []
+test-bind = []
+
+[dependencies]
+racc-proto = { path = "../proto" }
+socket2 = "0.6.5"
+
+[dev-dependencies]
+proptest = "1.11.0"
