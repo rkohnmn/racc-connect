@@ -1,5 +1,5 @@
 [package]
-name = "rd-app"
+name = "racc-app"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true

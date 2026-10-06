@@ -1,11 +1,13 @@
 # Open Questions
 
-Record unresolved product, architecture, environment, or instruction conflicts here. Resolve with the project author before making assumptions that affect implementation.
+Record unresolved product, architecture, environment, or instruction questions here. Resolve them with the project author before making assumptions that affect implementation.
 
-1. What is the final project working title?
+1. [RESOLVED] The project name is Racc Connect.
 2. Which project license should apply? No license has been chosen.
 3. Which Tailscale LocalAPI access method must the identity crate use on each supported platform and installation flavor?
 4. Which UI toolkit will the M4a spike select, based on measured evidence?
-5. The attached M0 objective says not to mention the product inspiration in any file, while AGENTS.md section 13 permits that reference in AGENTS.md and the existing project-scope text already contains it. Preserve the authoritative source text and avoid adding such references to new product-facing files.
-6. AGENTS.md section 10.3 asks extra verification scripts to be listed there, while the M0 objective otherwise restricts AGENTS.md edits. The required script listing was added alongside the explicitly requested session-start and package-prefix notes.
-7. docs/DEV_SETUP.md still lists cargo deny check as the manual command; the M0 verification scripts use cargo deny check --warn advisories so security advisory findings are warnings. Reconcile the manual command if warning-only behavior is desired there too.
+5. [RESOLVED] Documentation may mention Discord only to describe design inspiration. Product code, identifiers, UI strings, window titles, branding, package or file names, and shipped assets must not use its name, logo, or assets.
+6. [RESOLVED] The verification scripts are listed in AGENTS.md as required by section 10.3.
+7. [RESOLVED] docs/DEV_SETUP.md and both check-all scripts use `cargo deny check --warn vulnerability --warn unsound --warn unmaintained --warn notice --warn yanked`.
+8. At M10, select and verify the open license for the raccoon emoji artwork (for example, Google Noto Emoji); do not use Apple's emoji artwork or Discord logo shapes.
+9. [OWNER CONFIRMATION] Confirm the Mac's exact model and year in About This Mac. Its supplied specifications are consistent with a mid-2015 15-inch MacBook Pro, but that identification is an unverified inference.

@@ -8,14 +8,15 @@ Probe date: 2026-10-06 (America/New_York).
 - [VERIFIED-RUN] rustc reports 1.95.0 (59807616e 2026-04-14); Cargo reports 1.95.0 (f2d3ce0bd 2026-03-21).
 - [VERIFIED-RUN] The repository pins stable Rust 1.95.0 with rustfmt and clippy.
 - [COMPILE-ONLY] Installed targets: x86_64-pc-windows-msvc and x86_64-apple-darwin. Both target-add commands exited 0; Windows was already current and macOS standard-library support was installed.
-- [UNVERIFIED] Tailscale is not installed or available on PATH in this environment. No tailnet behavior was tested.
-- [UNVERIFIED] The physical Windows PCs, GPUs, displays, and 2015 Mac were not accessible; no hardware measurements were made.
+- [VERIFIED-RUN] Tailscale is not installed or available on PATH on this Windows PC. No tailnet behavior was tested.
+- [VERIFIED-RUN] This machine matches Windows PC #1 by its NVIDIA GeForce RTX 3050 Ti Laptop GPU. Windows build, GPU drivers, and three active 1920×1080 displays were probed read-only; see docs/HARDWARE.md. Windows PC #2 and the Mac remain owner-reported only.
 
 ## Milestone status
 
 | Milestone | Status | Evidence |
 |---|---|---|
 | M0 Workspace scaffold | Complete | [COMPILE-ONLY] Workspace, scripts, and documentation checks passed; see final report. |
+| M0.5 Housekeeping and publish | Verification complete; publish pending | [VERIFIED-RUN] Identity, naming, policy, documentation, and local checks complete; origin verification/push pending. |
 | M1 Protocol | Not started | [UNVERIFIED] |
 | M2 Transport | Not started | [UNVERIFIED] |
 | M3 Topology and session logic | Not started | [UNVERIFIED] |
@@ -38,13 +39,13 @@ Probe date: 2026-10-06 (America/New_York).
 
 ## Unverified
 
-- [UNVERIFIED] cargo-deny is not installed, so deny.toml parsing and an advisory database check could not be run. The scripts request warning-level advisory findings with cargo deny check --warn advisories; current behavior is documented in the official [cargo-deny advisory configuration](https://embarkstudios.github.io/cargo-deny/checks/advisories/cfg.html) and [check CLI](https://embarkstudios.github.io/cargo-deny/cli/check.html).
+- [UNVERIFIED — M0 only] At the M0 run, cargo-deny was not installed, so deny.toml parsing and an advisory database check were skipped. This was resolved during M0.5; see the current M0.5 session report below.
 - [COMPILE-ONLY] Cross-checks establish compilation only; they do not demonstrate platform behavior.
 - [HUMAN-PENDING] Hardware and tailnet checks are not performed by this agent.
 
 ## Blocked
 
-None.
+No implementation blocker. M0.5 publication is pending the required remote inspection and normal push.
 
 ## Session log
 
@@ -104,3 +105,16 @@ None.
 ##### M1 starting point
 
 M1 should start from the rd-proto library stub in crates/proto and the table of contents in docs/PROTOCOL.md. Implement the bounded v0 header and control message parsing/serialization there, update docs/PROTOCOL.md in the same change, and add the M1 malformed-input and round-trip tests. No M1 protocol types or behavior were started during this session.
+
+### 2026-10-06 — M0.5 housekeeping and publish (verification complete; publish pending)
+
+- [VERIFIED-RUN] Preflight began with a clean main worktree and `scripts/check-all.ps1` exited 0.
+- [VERIFIED-RUN] Set repository-local Git identity to `rkohnmn <275230809+rkohnmn@users.noreply.github.com>`. Rewrote the four unpublished commits so both author and committer match; the post-rewrite audit shows all four correct and their messages contain no attribution trailers. No global Git config command was used.
+- [VERIFIED-RUN] Cargo metadata reports 15 workspace packages and every package is prefixed `racc-`; crate directory names are unchanged. Current tree search for the former package prefix finds matches only in historical ADR 0002 and historical M0 text in this file.
+- [VERIFIED-RUN] `cargo-deny` 0.20.2 installed with `cargo install cargo-deny --locked`. The initially requested shorthand `--warn advisories` was rejected by this release because `advisories` is a check name, not a lint. The supported command `cargo deny check --warn vulnerability --warn unsound --warn unmaintained --warn notice --warn yanked` exits 0 and reports `advisories ok, bans ok, licenses ok, sources ok`. Scripts and manual instructions use that verified command.
+- [VERIFIED-RUN] The layering negative test temporarily added `racc-core → racc-app`; the PowerShell check exited 1 with `Forbidden application dependency found in library dependency tree: racc-core`. The temporary manifest addition was restored byte-for-byte and temporary library target removed. The normal Bash and PowerShell checks report `Layering check passed for 13 library crates.`
+- [VERIFIED-RUN] This Windows PC was identified as PC #1 by its NVIDIA GeForce RTX 3050 Ti Laptop GPU. Read-only probes recorded build 19045, driver 32.0.15.9571, AMD integrated graphics driver 31.0.21923.11000, three active displays at 1920×1080, Rust/Cargo 1.95.0, and Tailscale not installed/on PATH. Details and owner-reported hardware are in docs/HARDWARE.md.
+- [VERIFIED-RUN] Project name, brand rule, licensing notice, hardware record, questions, and ADR 0008 are updated. ADR 0002 is marked superseded. Human-only hardware items remain unchecked.
+- [VERIFIED-RUN] `scripts/check-all.ps1` and `scripts/check-all.sh` each exited 0 and ran cargo-deny. `cargo check --workspace --target x86_64-pc-windows-msvc` and the Intel macOS target check both exited 0. Target checks are [COMPILE-ONLY].
+- [VERIFIED-RUN] The working-tree and all four committed snapshots passed the public-hygiene scan for local paths, private usernames/machine names, disallowed email addresses, and secret-like material. The only email found was the approved GitHub noreply address.
+- [VERIFIED-RUN] Added the requested origin and ran `git ls-remote origin`; it exited 0 with no refs. The remote is empty, so a normal push is the next step.

@@ -3,61 +3,61 @@
 version = 4
 
 [[package]]
-name = "rd-app"
+name = "racc-app"
 version = "0.1.0"
 
 [[package]]
-name = "rd-capture"
+name = "racc-capture"
 version = "0.1.0"
 
 [[package]]
-name = "rd-clipboard"
+name = "racc-clipboard"
 version = "0.1.0"
 
 [[package]]
-name = "rd-core"
+name = "racc-core"
 version = "0.1.0"
 
 [[package]]
-name = "rd-decode"
+name = "racc-decode"
 version = "0.1.0"
 
 [[package]]
-name = "rd-encode"
+name = "racc-encode"
 version = "0.1.0"
 
 [[package]]
-name = "rd-host-agent"
+name = "racc-host-agent"
 version = "0.1.0"
 
 [[package]]
-name = "rd-identity"
+name = "racc-identity"
 version = "0.1.0"
 
 [[package]]
-name = "rd-input"
+name = "racc-input"
 version = "0.1.0"
 
 [[package]]
-name = "rd-net"
+name = "racc-net"
 version = "0.1.0"
 
 [[package]]
-name = "rd-proto"
+name = "racc-proto"
 version = "0.1.0"
 
 [[package]]
-name = "rd-session"
+name = "racc-session"
 version = "0.1.0"
 
 [[package]]
-name = "rd-telemetry"
+name = "racc-telemetry"
 version = "0.1.0"
 
 [[package]]
-name = "rd-testkit"
+name = "racc-testkit"
 version = "0.1.0"
 
 [[package]]
-name = "rd-topology"
+name = "racc-topology"
 version = "0.1.0"

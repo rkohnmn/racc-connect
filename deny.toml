@@ -1,12 +1,20 @@
-# Security-advisory findings are downgraded to warnings by the check scripts using --warn advisories.
+# No external dependencies currently need a license allow entry. Add a verified
+# permissive license only when a real dependency requires it, with its reason.
+# GPL and AGPL are denied by omission from this explicit allowlist.
 [advisories]
-version = 2
-ignore = []
 yanked = "warn"
-unmaintained = "all"
-unsound = "workspace"
 
 [licenses]
-version = 2
-allow = ["Apache-2.0", "MIT", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Unicode-3.0", "Zlib"]
+allow = []
 confidence-threshold = 0.93
+private = { ignore = true }
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

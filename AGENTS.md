@@ -14,7 +14,7 @@ A native, low-latency remote desktop and screen streaming application written pr
 
 **Every machine can be both a host (shares its screens) and a viewer (watches another machine).** The app lists devices on the left, shows the selected device's monitors like chat channels, and shows the chosen monitor live in the main panel with control and telemetry around it.
 
-The UI is inspired by Discord's desktop layout (device rail, channel-style sidebar, main panel, info sidebar, user panel). It must never use Discord's name, logo, icons, illustrations or other assets.
+The UI takes structural inspiration from Discord's desktop layout (device rail, channel-style sidebar, main panel, info sidebar, user panel). Documentation may name Discord only to describe that design inspiration. The name, logo, and assets must never appear in code, identifiers, UI strings, window titles, branding, package or file names, or shipped assets.
 
 ### Fixed product decisions (do not revisit without asking)
 
@@ -431,7 +431,7 @@ Use one at a time. Each ends with a verifiable condition.
 
 ## 13. Working agreement for agents
 
-1. Read this file, docs/DEV_SETUP.md, and docs/PROGRESS.md at the start of every session. Cargo package names use the rd- prefix; see ADR 0002.
+1. Read this file, docs/DEV_SETUP.md, and docs/PROGRESS.md at the start of every session. Cargo package names use the racc- prefix; see ADR 0008.
 2. Work on one milestone only. Keep changes small and committed in logical steps.
 3. Update `docs/PROGRESS.md` at the end of every session with what was done, what is verified, what is unverified, and what is blocked.
 4. Never mark hardware-dependent work as complete. Put it on the human checklist.
@@ -439,7 +439,7 @@ Use one at a time. Each ends with a verifiable condition.
 6. If a requirement here is impossible, unclear or in conflict, stop that item, write the question in `docs/OPEN_QUESTIONS.md`, and continue with unblocked work.
 7. Do not expand scope. Items on the exclusion list (audio, HDR, HEVC/AV1 requirements, FEC and NACK in v0, clipboard images and files, GPU usage telemetry) stay out unless the human adds them.
 8. Do not add telemetry, analytics or network calls beyond the Tailscale network and the Tailscale LocalAPI.
-9. Do not use or reference Discord's name, logos or assets anywhere in code, UI, docs or filenames beyond describing inspiration in this file.
+9. Discord may be named in documentation only to describe design inspiration. The name, logo, and assets must never appear in code, identifiers, UI strings, window titles, branding, package or file names, or shipped assets. The project's own logo, when made at milestone M10, is a raccoon emoji using a blue-purple, dark-theme colorway. It must use artwork under an open license (for example Google Noto Emoji; verify its current license) and must not use Apple's emoji artwork or any Discord logo shapes. Track the asset and license check as an M10 open question. Do not create a logo before then.
 10. Do not weaken security rules in section 4.1 to make something easier to test. Use a test-only configuration instead.
 
 ---

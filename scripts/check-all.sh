@@ -8,7 +8,7 @@ cargo test --workspace
 scripts/check-layering.sh
 
 if command -v cargo-deny >/dev/null 2>&1; then
-    cargo deny check --warn advisories
+    cargo deny check --warn vulnerability --warn unsound --warn unmaintained --warn notice --warn yanked
 else
-    printf 'NOTICE: cargo-deny is not installed; skipped cargo deny check --warn advisories.\n'
+    printf 'NOTICE: cargo-deny is not installed; skipped cargo deny check --warn vulnerability --warn unsound --warn unmaintained --warn notice --warn yanked.\n'
 fi

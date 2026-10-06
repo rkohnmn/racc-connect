@@ -1,4 +1,4 @@
-# Project Scope: Native Low-Latency Multi-Computer Remote Desktop (working title)
+# Racc Connect — Project Scope
 
 **Document purpose:** the complete statement of what this project is, what it includes, what it explicitly excludes, and how success is judged. It is the product-level companion to `AGENTS.md` (which instructs coding agents) and `docs/PROTOCOL.md` (which will hold the wire spec).
 
@@ -133,7 +133,7 @@ Four regions plus an overlay:
 
 Original dark theme inspired by Discord's structure: very dark charcoal rail, slightly lighter secondary sidebar, dark gray main area, lighter gray cards and selected rows, near-white primary text, muted gray secondary text, blue-purple accent. One-pixel borders, 6 to 10 px radii, compact spacing, clear hover and selected states, minimal smooth animation, custom scrollbars, 14 to 16 px body text and 18 to 22 px headers. All values live in a design-token module.
 
-**Branding constraint:** no Discord name, logo, icons, illustrations or other proprietary assets anywhere.
+**Branding constraint:** Discord may be named in documentation only to describe design inspiration. The name, logo, and assets must never appear in code, identifiers, UI strings, window titles, branding, package or file names, or shipped assets. The project's own raccoon emoji logo is planned for M10, must use openly licensed artwork, and must not use Apple's emoji artwork or any Discord logo shapes; see `docs/OPEN_QUESTIONS.md` for the M10 asset and license check.
 
 ### 5.3 Rendering requirement
 
@@ -257,7 +257,7 @@ The project is successful when, on the owner's three machines:
 7. The 2015 Intel Mac hosts and views stably at a documented sustained quality (at least 720p30) without unacceptable heat or dropped frames.
 8. Measured latency, CPU and memory are recorded in `docs/HARDWARE.md` and meet or honestly report against the targets in section 6.7.
 9. Windows PCs use hardware encode and decode; software fallback works when hardware fails.
-10. No Discord branding or assets appear anywhere.
+10. No Discord name, logo, or assets appear in code, identifiers, UI strings, window titles, branding, package or file names, or shipped assets.
 
 ---
 

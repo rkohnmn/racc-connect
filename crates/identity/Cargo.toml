@@ -1,5 +1,5 @@
 [package]
-name = "rd-identity"
+name = "racc-identity"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true

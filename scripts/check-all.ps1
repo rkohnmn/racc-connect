@@ -14,8 +14,8 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 if (Get-Command cargo-deny -ErrorAction SilentlyContinue) {
-    cargo deny check --warn advisories
+    cargo deny check --warn vulnerability --warn unsound --warn unmaintained --warn notice --warn yanked
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 } else {
-    Write-Output 'NOTICE: cargo-deny is not installed; skipped cargo deny check --warn advisories.'
+    Write-Output 'NOTICE: cargo-deny is not installed; skipped cargo deny check --warn vulnerability --warn unsound --warn unmaintained --warn notice --warn yanked.'
 }

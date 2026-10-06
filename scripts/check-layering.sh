@@ -2,9 +2,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-for package in rd-proto rd-net rd-topology rd-session rd-telemetry rd-capture rd-encode rd-decode rd-input rd-clipboard rd-identity rd-core rd-testkit; do
+for package in racc-proto racc-net racc-topology racc-session racc-telemetry racc-capture racc-encode racc-decode racc-input racc-clipboard racc-identity racc-core racc-testkit; do
     tree="$(cargo tree --prefix none --package "$package")"
-    if printf '%s\n' "$tree" | grep -Eq '^rd-(app|host-agent)([[:space:]]|$)'; then
+    if printf '%s\n' "$tree" | grep -Eq '^racc-(app|host-agent)([[:space:]]|$)'; then
         printf 'Forbidden application dependency found in library dependency tree: %s\n' "$package" >&2
         exit 1
     fi

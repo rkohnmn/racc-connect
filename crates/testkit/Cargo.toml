@@ -1,5 +1,5 @@
 [package]
-name = "rd-testkit"
+name = "racc-testkit"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true

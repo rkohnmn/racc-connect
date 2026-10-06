@@ -127,7 +127,7 @@ For service and helper work (M6), you will test as an administrator and may need
 
 Run from the repository root.
 
-Dependency layering: lower crates must never depend on higher crates, and no library crate may depend on rd-app or rd-host-agent. rd-core and every crate below it must build and test with no UI crate present. Run scripts/check-layering.sh or scripts/check-layering.ps1 to check this.
+Dependency layering: lower crates must never depend on higher crates, and no library crate may depend on racc-app or racc-host-agent. racc-core and every crate below it must build and test with no UI crate present. Run scripts/check-layering.sh or scripts/check-layering.ps1 to check this.
 
 | Task | Command |
 |---|---|
@@ -135,11 +135,11 @@ Dependency layering: lower crates must never depend on higher crates, and no lib
 | Format | `cargo fmt --all` |
 | Lint (must be clean) | `cargo clippy --workspace --all-targets -- -D warnings` |
 | Test (all) | `cargo test --workspace` or `cargo nextest run --workspace` |
-| Test one crate | `cargo test -p rd-proto` |
+| Test one crate | `cargo test -p racc-proto` |
 | Cross-check Windows | `cargo check --workspace --target x86_64-pc-windows-msvc` |
 | Cross-check macOS | `cargo check --workspace --target x86_64-apple-darwin` |
-| License and advisory check | `cargo deny check` |
-| Build release | `cargo build --release -p rd-host-agent -p rd-app` |
+| License and advisory check | `cargo deny check --warn vulnerability --warn unsound --warn unmaintained --warn notice --warn yanked` |
+| Build release | `cargo build --release -p racc-host-agent -p racc-app` |
 
 A milestone is not done until fmt, clippy and test pass. Keep a `scripts/check-all.sh` (and a Windows-equivalent `scripts/check-all.ps1`) that runs them, and list them in `AGENTS.md`.
 

@@ -1,6 +1,32 @@
 # Hardware Verification Record
 
-The checks below require the project author's machines or tailnet. They are not complete until the human records results.
+Hardware behavior checks require the project author's computers or tailnet. They remain unchecked until a human records the results.
+
+## Environment record
+
+### Owner-reported hardware
+
+Specifications below were supplied by the owner on 2026-10-06 and have not been independently verified.
+
+- Windows PC #1 (laptop) [OWNER-REPORTED]: AMD Ryzen 7 5800U; NVIDIA GeForce RTX 3050 Ti; 16 GB RAM at 4266 MHz.
+- Windows PC #2 (server PC) [OWNER-REPORTED]: AMD Ryzen 9 5900X; AMD Radeon RX 7900 GRE; 32 GB DDR4.
+- MacBook [OWNER-REPORTED]: macOS Monterey 12.7.6; Intel Core i7 2.2 GHz quad-core; Intel Iris Pro 1536 MB; 16 GB 1600 MHz DDR3. Exact model/year not supplied. [UNVERIFIED INFERENCE] These specifications are consistent with a mid-2015 15-inch MacBook Pro; confirm in About This Mac.
+
+### Expected implications (unverified)
+
+- PC #1 has an NVIDIA GPU, so the Windows Media Foundation H.264 path is expected to expose NVENC; this has not been tested.
+- PC #2 has an AMD GPU, so the Windows Media Foundation H.264 path is expected to expose AMF; this has not been tested.
+- macOS 12.7.6 is at or above the documented macOS 12.3 ScreenCaptureKit minimum, so ScreenCaptureKit is expected to be available; this is unverified on the Mac.
+- The Mac's Intel GPU is expected to provide hardware H.264 encoding through VideoToolbox; this is unverified.
+
+### This Codex machine — read-only probe, 2026-10-06
+
+- [VERIFIED-RUN] Windows 10.0.19045 (build 19045).
+- [VERIFIED-RUN] NVIDIA GeForce RTX 3050 Ti Laptop GPU, driver 32.0.15.9571; AMD Radeon(TM) Graphics, driver 31.0.21923.11000. Virtual display adapters were also reported.
+- [VERIFIED-RUN] This machine matches Windows PC #1 (laptop) by the NVIDIA GeForce RTX 3050 Ti GPU.
+- [VERIFIED-RUN] Rust: rustc 1.95.0 (59807616e 2026-04-14); Cargo 1.95.0 (f2d3ce0bd 2026-03-21).
+- [VERIFIED-RUN] Tailscale is not installed or available on PATH.
+- [VERIFIED-RUN] Windows display API reported 3 active displays, each at 1920×1080.
 
 ## M5 — Windows capture and encode
 
@@ -27,15 +53,3 @@ The checks below require the project author's machines or tailnet. They are not 
 
 - [ ] [HUMAN-PENDING] Record macOS version and ScreenCaptureKit availability.
 - [ ] [HUMAN-PENDING] Measure sustained VideoToolbox 720p30 and 1080p30, temperature, dropped frames, and permission prompts.
-
-## Owner-reported hardware inventory
-
-The following specifications were supplied by the owner on 2026-10-06. They have not been independently verified or measured by the agent.
-
-## Environment record
-
-Windows PC #1 (Laptop): Windows build ____  CPU AMD Ryzen 7 5800U  GPU NVIDIA GeForce RTX 3050 Ti  driver ____  monitors ____  RAM 16 GB at 4266 MHz
-Windows PC #2 (Server PC): Windows build ____  CPU AMD Ryzen 9 5900X  GPU AMD Radeon RX 7900 GRE  driver ____  monitors ____  RAM 32 GB DDR4
-MacBook (exact model and year not supplied): macOS Monterey 12.7.6  CPU Intel Core i7 2.2 GHz quad-core  GPU Intel Iris Pro 1536 MB  RAM 16 GB 1600 MHz DDR3
-Tailscale versions: PC1 ____  PC2 ____  Mac ____
-Agent sandbox: OS ____  Rust ____  Windows cross-check ____  macOS cross-check ____
