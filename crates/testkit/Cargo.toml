@@ -3,3 +3,7 @@ name = "racc-testkit"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
+
+[dependencies]
+racc-net = { path = "../net", features = ["test-bind"] }
+racc-proto = { path = "../proto" }
