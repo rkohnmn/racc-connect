@@ -59,3 +59,9 @@ Specifications below were supplied by the owner on 2026-10-06 and have not been 
 - [ ] [HUMAN-PENDING] On Windows PC #1, rerun `cargo test -p racc-testkit real_udp_loopback_proxy_preserves_frames_and_recovers_under_seeded_loss -- --nocapture` if firewall or driver conditions differ, and record any deviation from the agent's 2026-10-06 loopback evidence in `docs/TRANSPORT.md`.
 - [ ] [HUMAN-PENDING — M7] After Tailscale is installed and confirmed on both Windows PCs, run a 300-frame sender-to-viewer echo over the tunnel. Record direct/DERP path, packet loss, keyframe recovery, and whether large IDRs complete.
 - [ ] [HUMAN-PENDING — Mac] Repeat the 233 KB paced-send measurement on the 2015 Intel Mac; record send duration, maximum inter-datagram gap, and sleep granularity against the 60% target.
+
+## M3a — Coordinate input verification (human run required)
+
+- [ ] [HUMAN-PENDING] On each Windows PC, click the four corners and center of every monitor; read back the cursor location with `GetCursorPos` or an on-screen readout. Compare `MOUSEEVENTF_VIRTUALDESK` absolute mapping against `SetCursorPos` using physical coordinates in a per-monitor-DPI-aware process.
+- [ ] [HUMAN-PENDING] Repeat the Windows corner and center comparison with mixed monitor scaling at 125% and 150%.
+- [ ] [HUMAN-PENDING] On the 2015 Intel Mac, test all four corners and center on the built-in display and an external display if available, using OS-reported point geometry.

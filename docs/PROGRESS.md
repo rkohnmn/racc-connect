@@ -20,7 +20,7 @@ Probe date: 2026-10-06 (America/New_York).
 | M1 Protocol | Complete | [VERIFIED-RUN] Protocol tests, documentation, cargo-deny, scripts, and compile-only target checks passed; see the M1 report. |
 | M2 Transport | Complete | [VERIFIED-RUN] M2 acceptance checks 1–13 passed on Windows 10.0.19045; see the final report below. Windows and Intel macOS target checks are COMPILE-ONLY. |
 | M2.5 Transport audit | Complete | [VERIFIED-RUN] All 14 M2.5 acceptance checks passed; the audit and final evidence are recorded below and were pushed to origin/main. No M3 work was started. |
-| M3 Topology and session logic | Not started | [UNVERIFIED] |
+| M3a Topology, coordinate math, telemetry | Implemented; publication pending | [VERIFIED-RUN] Pure tests and acceptance checks pass; [COMPILE-ONLY] Windows and macOS cross-checks pass. Final evidence and push status will be recorded below. M3b session state machines remain not started. |
 | M4a UI toolkit spike | Not started | [UNVERIFIED] |
 | M4b UI shell | Not started | [UNVERIFIED] |
 | M5 Windows capture and encode | Not started | [UNVERIFIED] |
