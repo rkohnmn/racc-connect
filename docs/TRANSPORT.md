@@ -87,7 +87,48 @@ The constant values and protocol header relationships are asserted by tests in `
 
 Labels use the `docs/DEV_SETUP.md` vocabulary. All measurements below are `[VERIFIED-RUN]` on Windows 10.0.19045, this Codex machine matching Windows PC #1, on 2026-10-06. They are deterministic simulation or loopback measurements, not tailnet or GPU results.
 
-### A. Ten-minute deterministic delivery simulation
+### A. Corrected ten-minute deterministic delivery simulation
+
+[VERIFIED-RUN] Each row represents 600 virtual seconds at 30 fps (18,000 source frames). Unconstrained rows use a link rate of `max(10 x tier bitrate, 50 Mbps)` with a 64 MiB queue; no rate or queue drops occurred. IID profiles used 1 ms one-way delay, +/-100 us jitter, 3% packet reordering with one-packet displacement, and 0.1% duplication. The burst row uses the recorded Gilbert-Elliott profile and seed. Explicit constrained cases retain their configured rate and queue. Keyframe-response request path uses the profile one-way delay, 10 ms encode time, and the next 30 fps encode opportunity. The stream simulator records stale time beyond one 33.333 ms frame interval. Freeze columns are median / p95 / mean stale interval lengths. Queue delay is mean / max serializer waiting time; queue drops are included for constrained rows. Each seed is shown.
+
+| Link case | Tier | Loss | Keyframe | Seed | Delivered frames | Requests/min | Freeze median / p95 / mean (ms) | Stale picture | Peak reassembler bytes | Queue delay mean / max (ms) | Queue drops |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| unconstrained | 480p30 | 0.00% iid | 8x | 8409 | 100.000% | 0.00 | 0.065 / 0.900 / 0.124 | 0.1838% | 49,644 | 0.0001 / 0.1920 | 0 |
+| unconstrained | 480p30 | 0.10% iid | 8x | 9009 | 98.306% | 12.00 | 0.064 / 0.965 / 1.260 | 1.8707% | 59,796 | 0.0002 / 0.1920 | 0 |
+| unconstrained | 480p30 | 0.25% iid | 8x | 10525 | 95.811% | 30.70 | 0.065 / 1.067 / 2.990 | 4.3570% | 66,548 | 0.0002 / 0.1920 | 0 |
+| unconstrained | 480p30 | 0.50% iid | 8x | 13137 | 89.172% | 57.80 | 0.068 / 66.561 / 8.008 | 10.9744% | 60,638 | 0.0002 / 0.1920 | 0 |
+| unconstrained | 480p30 | 1.00% iid | 8x | 1993 | 70.578% | 113.00 | 0.074 / 66.827 / 26.576 | 29.5388% | 60,638 | 0.0002 / 0.1920 | 0 |
+| unconstrained | 480p30 | 2.00% iid | 8x | 28409 | 29.067% | 136.00 | 0.089 / 700.021 / 146.148 | 70.9794% | 65,706 | 0.0002 / 0.1920 | 0 |
+| unconstrained | 480p30 | 5.00% iid | 8x | 58249 | 1.950% | 81.10 | 0.188 / 13501.005 / 2711.034 | 98.0491% | 66,192 | 0.0002 / 0.1920 | 0 |
+| unconstrained | 720p30 | 0.00% iid | 8x | 10409 | 100.000% | 0.00 | 0.063 / 0.903 / 0.122 | 0.1816% | 115,836 | 0.0002 / 0.1920 | 0 |
+| unconstrained | 720p30 | 0.10% iid | 8x | 11073 | 96.072% | 27.20 | 0.065 / 1.043 / 2.843 | 4.0946% | 143,067 | 0.0003 / 0.3480 | 0 |
+| unconstrained | 720p30 | 0.25% iid | 8x | 8557 | 87.333% | 64.50 | 0.070 / 66.685 / 9.725 | 12.8327% | 143,067 | 0.0005 / 0.1920 | 0 |
+| unconstrained | 720p30 | 0.50% iid | 8x | 15137 | 61.939% | 122.50 | 0.075 / 266.626 / 39.912 | 38.1823% | 156,468 | 0.0006 / 0.2630 | 0 |
+| unconstrained | 720p30 | 1.00% iid | 8x | 4025 | 22.117% | 129.60 | 0.090 / 1499.873 / 222.328 | 77.9260% | 157,251 | 0.0007 / 0.3470 | 0 |
+| unconstrained | 720p30 | 2.00% iid | 8x | 26249 | 2.383% | 81.60 | 0.147 / 13499.900 / 2460.930 | 97.6169% | 157,251 | 0.0006 / 0.3230 | 0 |
+| unconstrained | 720p30 | 5.00% iid | 8x | 60409 | 0.044% | 60.90 | 66566.102 / 409974.851 / 133776.770 | 89.1845% | 157,251 | 0.0004 / 0.1920 | 0 |
+| unconstrained | 1080p30 | 0.00% iid | 8x | 15965 | 100.000% | 0.00 | 0.069 / 0.932 / 0.138 | 0.2051% | 232,854 | 0.0017 / 7.3250 | 0 |
+| unconstrained | 1080p30 | 0.10% iid | 8x | 15797 | 92.717% | 43.90 | 0.072 / 1.160 / 5.651 | 7.8852% | 288,498 | 0.5955 / 7.4630 | 0 |
+| unconstrained | 1080p30 | 0.25% iid | 8x | 14233 | 63.344% | 115.90 | 0.080 / 108.128 / 39.377 | 37.5263% | 316,482 | 1.2603 / 7.6010 | 0 |
+| unconstrained | 1080p30 | 0.50% iid | 8x | 11733 | 21.294% | 131.60 | 0.103 / 1507.208 / 247.417 | 79.2560% | 316,482 | 1.3627 / 7.4630 | 0 |
+| unconstrained | 1080p30 | 1.00% iid | 8x | 6477 | 2.567% | 80.50 | 0.151 / 13540.376 / 2397.581 | 97.1020% | 316,482 | 0.9388 / 7.4630 | 0 |
+| unconstrained | 1080p30 | 2.00% iid | 8x | 28797 | 0.122% | 62.80 | 13271.151 / 118564.990 / 31045.021 | 67.2642% | 316,482 | 0.7425 / 7.3910 | 0 |
+| unconstrained | 1080p30 | 5.00% iid | 8x | 64781 | 0.000% | 60.20 | 599994.000 / 599994.000 / 599994.000 | 99.9990% | 316,482 | 0.6302 / 7.0490 | 0 |
+| burst_GE | 720p30 | burst GE (738 profile losses) | 8x | 65261 | 96.672% | 21.00 | 0.066 / 1.024 / 2.429 | 3.5054% | 151,740 | 0.0003 / 0.1920 | 0 |
+| unconstrained | 720p30 | 0.50% iid | 4x | 15141 | 79.206% | 110.80 | 0.074 / 66.750 / 16.722 | 20.9329% | 85,503 | 0.0002 / 0.1920 | 0 |
+| unconstrained | 720p30 | 1.00% iid | 4x | 4029 | 46.239% | 172.90 | 0.090 / 300.042 / 70.403 | 53.8350% | 98,919 | 0.0002 / 0.1920 | 0 |
+| unconstrained | 720p30 | 2.00% iid | 4x | 26253 | 14.411% | 153.70 | 0.133 / 2499.887 / 326.743 | 85.6067% | 99,687 | 0.0002 / 0.1920 | 0 |
+| unconstrained | 1080p30 | 0.50% iid | 4x | 11729 | 48.617% | 165.20 | 0.093 / 299.929 / 64.194 | 51.4730% | 200,172 | 0.0002 / 0.1380 | 0 |
+| unconstrained | 1080p30 | 1.00% iid | 4x | 6473 | 13.250% | 145.50 | 0.138 / 2500.010 / 359.574 | 86.7172% | 200,202 | 0.0002 / 0.1380 | 0 |
+| unconstrained | 1080p30 | 2.00% iid | 4x | 28793 | 1.900% | 88.90 | 299.982 / 12499.858 / 2452.987 | 94.8488% | 199,818 | 0.0002 / 0.2100 | 0 |
+| constrained_2x_100KB | 720p30 | 0.50% iid | 8x | 7009505 | 0.000% | 60.10 | 599994.000 / 599994.000 / 599994.000 | 99.9990% | 140,658 | 15.1791 / 96.1790 | 9373 |
+| constrained_2x_100KB | 720p30 | 2.00% iid | 8x | 6990153 | 0.000% | 60.10 | 599994.000 / 599994.000 / 599994.000 | 99.9990% | 140,658 | 15.1531 / 96.1790 | 8459 |
+| constrained_5Mbps_150KB | 720p30 | 0.50% iid | 8x | 5009505 | 26.411% | 99.90 | 0.132 / 2724.139 / 517.764 | 78.7002% | 156,468 | 97.1231 / 221.1000 | 13098 |
+| constrained_5Mbps_150KB | 720p30 | 2.00% iid | 8x | 4992457 | 2.106% | 76.60 | 5719.049 / 19733.220 / 7343.064 | 97.9075% | 156,468 | 70.1460 / 221.3290 | 5204 |
+
+The 4x keyframe sensitivity rows are explicitly labeled `4x`; the primary matrix uses `8x`. Zero-loss rows show about 0.18-0.21% stale time from timer phase and packetization, while all 18,000 frames arrive. The constrained 2x / 100 KB case drops the full stream under both tested loss rates: the keyframe burst exceeds the link service rate and repeatedly overfills its queue. At 5 Mbps / 150 KB, 720p 0.5% delivers 26.411% with 78.7002% stale time, and 2% delivers 2.106% with 97.9075% stale time; mean serializer queue delay is 97.1231 ms and 70.1460 ms, respectively. These cases remain separate from the unconstrained baseline.
+
+### Superseded M2 original results (flawed link model)
 
 Each run simulated 600 seconds at 30 fps (18,000 frames), a startup keyframe, and an IDR response at the next encode opportunity after a modeled 20 ms RTT/2 plus 10 ms encode delay. Average P-frame size was `bitrate / 8 / 30`; a keyframe was modeled at 8× that size. For an unset rate limiter the simulator allowed 102% of the video bitrate for UDP/protocol headers and duplicate copies. The profiles used 1 ms one-way delay, ±100 µs uniform jitter, 3% reordering with one-packet displacement, 0.1% duplication, a 4 MiB finite queue, and seeded xorshift64*. The iid runs used these exact configured packet-loss rates:
 
@@ -120,9 +161,13 @@ A 233,328-byte encoded keyframe (198 datagrams, 236,892 bytes including headers)
 
 A release-mode single-thread micro-run processed 100,000 pre-encoded one-fragment video datagrams in 29.088 ms: **3,437,844 datagrams/second on one worker thread** on the Windows PC #1 machine. The largest in-flight payload observed across the simulation matrix was 314,118 bytes. This micro-run is a local CPU measurement, not an end-to-end stream-rate guarantee.
 
-### D. Decision on recovery
+### D. Updated conclusion on recovery
 
-Even 0.5% iid packet loss delivered only 8.278% of 480p frames, 1.761% of 720p frames, and 0.372% of 1080p frames in this model; at 2%, the 1080p profile delivered no frame during the ten-minute run. The 233 KB keyframe requires about 198 fragments, so it is particularly unlikely to arrive intact as loss rises. At the tested 0.5% iid loss point, interactive delivery is already unacceptable in this v0 recovery model. Since the next tested point is 0%, these runs do not establish a more precise threshold between 0% and 0.5%. **Recommendation:** evaluate selective retransmission requests for missing keyframe fragments before M7. It directly targets the measured long keyframe recovery intervals; do not add it in M2. XOR parity FEC remains a comparison candidate if M7's measured retransmission delay is too high. These are simulation-backed recommendations, not real-network measurements.
+The corrected unconstrained 8x matrix delivered, at 0.5% / 1% / 2% iid datagram loss: 480p 89.172% / 70.578% / 29.067%, 720p 61.939% / 22.117% / 2.383%, and 1080p 21.294% / 2.567% / 0.122%. Stale-picture percentages at those points were 10.974% / 29.539% / 70.979%, 38.182% / 77.926% / 97.617%, and 79.256% / 97.102% / 67.264%, respectively. The final 1080p/2% stale figure reflects a late delivered frame near the end of this fixed-seed run; it must be read with delivered percent and freeze percentiles.
+
+For a concrete v0 acceptance threshold, define acceptable as at least 90% frames delivered and at most 10% stale time. All three tiers meet it at 0.1% iid loss. 480p also meets it at 0.25%; 720p and 1080p do not. No tier meets it at 0.5%. Thus the common all-tier v0 operating range is 0-0.1% iid loss on this synthetic unconstrained path, with 480p conditionally extending to 0.25%. This is simulation evidence only, not a Tailscale guarantee.
+
+The simulator-only comparison favors the hybrid NACK-all+FEC-20 as the M7 candidate after the earlier topology and UI milestones. At 720p/2%/1 ms one-way, it delivered 100% with 1.389% stale time, 8.742% overhead and 1.538 ms median added latency, against baseline 2.467% delivered and 95.550% stale. At 720p/0.5%/20 ms it delivered 100% with 0.834% stale and 8.277% overhead, against baseline 59.411% and 40.566%. NACK-all alone uses less bandwidth (2.460% overhead at 720p/2%/1 ms) but its 48.622% stale time at 720p/2%/20 ms misses the 10% threshold. The 1080p/2%/20 ms hybrid row still has 17.875% stale time. These remain simulator-only comparisons; no NACK or FEC implementation is included here.
 
 ## Verification boundaries
 

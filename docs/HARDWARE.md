@@ -10,7 +10,7 @@ Specifications below were supplied by the owner on 2026-10-06 and have not been 
 
 - Windows PC #1 (laptop) [OWNER-REPORTED]: AMD Ryzen 7 5800U; NVIDIA GeForce RTX 3050 Ti; 16 GB RAM at 4266 MHz.
 - Windows PC #2 (server PC) [OWNER-REPORTED]: AMD Ryzen 9 5900X; AMD Radeon RX 7900 GRE; 32 GB DDR4.
-- MacBook [OWNER-REPORTED]: macOS Monterey 12.7.6; Intel Core i7 2.2 GHz quad-core; Intel Iris Pro 1536 MB; 16 GB 1600 MHz DDR3. Exact model/year not supplied. [UNVERIFIED INFERENCE] These specifications are consistent with a mid-2015 15-inch MacBook Pro; confirm in About This Mac.
+- Late 2015 MacBook [OWNER-REPORTED]: macOS Monterey 12.7.6; Intel Core i7 2.2 GHz quad-core; Intel Iris Pro 1536 MB; 16 GB 1600 MHz DDR3. [UNVERIFIED INFERENCE] The stated CPU and GPU correspond to a 15-inch MacBook Pro in the 2013 to 2015 range; macOS 12.7.6 (Monterey) implies a 2015-or-later model, so the likely model is a 15-inch MacBook Pro (Mid 2015). The owner must confirm via Apple menu, About This Mac.
 
 ### Expected implications (unverified)
 

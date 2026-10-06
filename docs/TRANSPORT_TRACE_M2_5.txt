@@ -1,0 +1,1147 @@
+   Compiling racc-testkit v0.1.0 (C:\Users\RobTop\.codex\worktrees\m25-transport-audit\racc-connect\crates\testkit)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.83s
+     Running unittests src\lib.rs (target\debug\deps\racc_testkit-857ddf4acea6098c.exe)
+
+running 1 test
+TRACE seed=5716 bitrate=1500 loss=0.5% losses=20 delivered=7.406% requests=622 stale=92.569% reassembly_peak=60638B profile_loss=607 queue_drops=18174 link_queue_peak=4194302B incomplete=1083 waiting=15584 evicted=0 gap=2 inconsistent=0 keyframes=79/79,keyframe_drop_inc/timeout/reorder/superseded/evict/incon=522/0/522/0/0/0
+t=0.000ms keyframe_sent frame_id=0 bytes=50000 fragments=43 KEY=1 CONFIG=1
+t=5.000ms need_keyframe=true request_emitted backoff_step=1 elapsed_since_prior_request_ms=0
+t=7.326ms keyframe_fragment_received frame_id=0 fragment=1/43
+t=13.606ms keyframe_fragment_received frame_id=0 fragment=2/43
+t=19.800ms keyframe_fragment_received frame_id=0 fragment=3/43
+t=25.000ms request_arrived_at_simulated_sender
+t=26.004ms keyframe_fragment_received frame_id=0 fragment=4/43
+t=32.298ms keyframe_fragment_received frame_id=0 fragment=5/43
+t=38.554ms keyframe_fragment_received frame_id=0 fragment=6/43
+t=44.881ms keyframe_fragment_received frame_id=0 fragment=7/43
+t=51.281ms keyframe_fragment_received frame_id=0 fragment=8/43
+t=57.416ms keyframe_fragment_received frame_id=0 fragment=9/43
+t=63.672ms keyframe_fragment_received frame_id=0 fragment=10/43
+t=66.666ms keyframe_sent frame_id=2 bytes=50000 fragments=43 KEY=1 CONFIG=1
+t=70.077ms keyframe_fragment_received frame_id=0 fragment=11/43
+t=76.356ms keyframe_fragment_received frame_id=0 fragment=12/43
+t=82.620ms keyframe_fragment_received frame_id=0 fragment=13/43
+t=88.822ms keyframe_fragment_received frame_id=0 fragment=14/43
+t=95.057ms keyframe_fragment_received frame_id=0 fragment=15/43
+t=101.498ms keyframe_fragment_received frame_id=0 fragment=16/43
+t=107.689ms keyframe_fragment_received frame_id=0 fragment=17/43
+t=113.947ms keyframe_fragment_received frame_id=0 fragment=18/43
+t=120.230ms keyframe_fragment_received frame_id=0 fragment=19/43
+t=126.592ms keyframe_fragment_received frame_id=0 fragment=20/43
+t=132.833ms keyframe_fragment_received frame_id=0 fragment=21/43
+t=139.074ms keyframe_fragment_received frame_id=0 fragment=22/43
+t=145.405ms keyframe_fragment_received frame_id=0 fragment=23/43
+t=151.679ms keyframe_fragment_received frame_id=0 fragment=24/43
+t=157.927ms keyframe_fragment_received frame_id=0 fragment=25/43
+t=164.089ms keyframe_fragment_received frame_id=0 fragment=26/43
+t=170.506ms keyframe_fragment_received frame_id=0 fragment=27/43
+t=176.732ms keyframe_fragment_received frame_id=0 fragment=28/43
+t=183.036ms keyframe_fragment_received frame_id=0 fragment=29/43
+t=189.259ms keyframe_fragment_received frame_id=0 fragment=30/43
+t=195.591ms keyframe_fragment_received frame_id=0 fragment=31/43
+t=201.898ms keyframe_fragment_received frame_id=0 fragment=32/43
+t=208.050ms keyframe_fragment_received frame_id=0 fragment=33/43
+t=214.361ms keyframe_fragment_received frame_id=0 fragment=34/43
+t=220.696ms keyframe_fragment_received frame_id=0 fragment=35/43
+t=226.806ms keyframe_fragment_received frame_id=0 fragment=36/43
+t=233.110ms keyframe_fragment_received frame_id=0 fragment=37/43
+t=239.436ms keyframe_fragment_received frame_id=0 fragment=38/43
+t=245.799ms keyframe_fragment_received frame_id=0 fragment=39/43
+t=252.095ms keyframe_fragment_received frame_id=0 fragment=40/43
+t=258.357ms keyframe_fragment_received frame_id=0 fragment=41/43
+t=264.485ms keyframe_fragment_received frame_id=0 fragment=42/43
+t=266.497ms keyframe_fragment_received frame_id=0 fragment=43/43
+t=266.497ms keyframe_completed frame_id=0 fragments=43
+t=266.497ms need_keyframe_cleared_after_keyframe_delivery
+t=266.497ms keyframe_delivered frame_id=0
+t=305.982ms keyframe_fragment_received frame_id=2 fragment=1/43
+t=312.375ms keyframe_fragment_received frame_id=2 fragment=2/43
+t=318.544ms keyframe_fragment_received frame_id=2 fragment=3/43
+t=324.867ms keyframe_fragment_received frame_id=2 fragment=4/43
+t=331.221ms keyframe_fragment_received frame_id=2 fragment=5/43
+t=337.387ms keyframe_fragment_received frame_id=2 fragment=6/43
+t=343.694ms keyframe_fragment_received frame_id=2 fragment=7/43
+t=349.873ms keyframe_fragment_received frame_id=2 fragment=8/43
+t=356.314ms keyframe_fragment_received frame_id=2 fragment=9/43
+t=362.506ms keyframe_fragment_received frame_id=2 fragment=10/43
+t=368.693ms keyframe_fragment_received frame_id=2 fragment=11/43
+t=374.954ms keyframe_fragment_received frame_id=2 fragment=12/43
+t=381.304ms keyframe_fragment_received frame_id=2 fragment=13/43
+t=387.547ms keyframe_fragment_received frame_id=2 fragment=14/43
+t=393.780ms keyframe_fragment_received frame_id=2 fragment=15/43
+t=400.134ms keyframe_fragment_received frame_id=2 fragment=16/43
+t=406.350ms keyframe_fragment_received frame_id=2 fragment=17/43
+t=412.780ms keyframe_fragment_received frame_id=2 fragment=18/43
+t=418.900ms keyframe_fragment_received frame_id=2 fragment=19/43
+t=425.277ms keyframe_fragment_received frame_id=2 fragment=20/43
+t=431.592ms keyframe_fragment_received frame_id=2 fragment=21/43
+t=437.880ms keyframe_fragment_received frame_id=2 fragment=22/43
+t=444.016ms keyframe_fragment_received frame_id=2 fragment=23/43
+t=450.388ms keyframe_fragment_received frame_id=2 fragment=24/43
+t=456.718ms keyframe_fragment_received frame_id=2 fragment=25/43
+t=462.918ms keyframe_fragment_received frame_id=2 fragment=26/43
+t=469.272ms keyframe_fragment_received frame_id=2 fragment=27/43
+t=475.475ms keyframe_fragment_received frame_id=2 fragment=28/43
+t=481.648ms keyframe_fragment_received frame_id=2 fragment=29/43
+t=488.006ms keyframe_fragment_received frame_id=2 fragment=30/43
+t=494.331ms keyframe_fragment_received frame_id=2 fragment=31/43
+t=500.548ms keyframe_fragment_received frame_id=2 fragment=32/43
+t=506.842ms keyframe_fragment_received frame_id=2 fragment=33/43
+t=513.203ms keyframe_fragment_received frame_id=2 fragment=34/43
+t=519.343ms keyframe_fragment_received frame_id=2 fragment=35/43
+t=525.689ms keyframe_fragment_received frame_id=2 fragment=36/43
+t=532.028ms keyframe_fragment_received frame_id=2 fragment=37/43
+t=538.262ms keyframe_fragment_received frame_id=2 fragment=38/43
+t=544.495ms keyframe_fragment_received frame_id=2 fragment=39/43
+t=550.761ms keyframe_fragment_received frame_id=2 fragment=40/43
+t=556.950ms keyframe_fragment_received frame_id=2 fragment=41/43
+t=563.217ms keyframe_fragment_received frame_id=2 fragment=42/43
+t=565.196ms keyframe_fragment_received frame_id=2 fragment=43/43
+t=565.196ms keyframe_completed frame_id=2 fragments=43
+t=565.196ms keyframe_delivered frame_id=2
+t=1970.646ms first_lost_fragment loss_event=1 frame_id=59 fragment=2/6 KEY=0 CONFIG=0 cause=iid_or_burst_loss
+t=1986.646ms fragment_lost loss_event=2 frame_id=59 fragment=6/6 KEY=0 CONFIG=0 cause=iid_or_burst_loss
+t=2485.515ms loss_declared triggering_frame_id=Some(60) incomplete=1 gap=0 evicted=0 inconsistent=0
+t=2485.515ms frame_not_delivered frame_id=Some(60) reason=waiting_for_keyframe count=1
+t=2485.515ms need_keyframe_set_after_loss
+t=2485.515ms need_keyframe=true request_emitted backoff_step=1 elapsed_since_prior_request_ms=0
+t=2505.515ms request_arrived_at_simulated_sender
+t=2518.588ms frame_not_delivered frame_id=Some(61) reason=waiting_for_keyframe count=1
+t=2533.308ms keyframe_sent frame_id=76 bytes=50000 fragments=43 KEY=1 CONFIG=1
+t=2551.977ms frame_not_delivered frame_id=Some(62) reason=waiting_for_keyframe count=1
+t=2585.195ms frame_not_delivered frame_id=Some(63) reason=waiting_for_keyframe count=1
+t=2618.481ms frame_not_delivered frame_id=Some(64) reason=waiting_for_keyframe count=1
+t=2651.684ms frame_not_delivered frame_id=Some(65) reason=waiting_for_keyframe count=1
+t=2684.958ms frame_not_delivered frame_id=Some(66) reason=waiting_for_keyframe count=1
+t=2686.640ms need_keyframe=true request_emitted backoff_step=2 elapsed_since_prior_request_ms=201
+t=2706.640ms request_arrived_at_simulated_sender
+t=2718.140ms frame_not_delivered frame_id=Some(67) reason=waiting_for_keyframe count=1
+t=2733.306ms keyframe_sent frame_id=82 bytes=50000 fragments=43 KEY=1 CONFIG=1
+t=2751.473ms frame_not_delivered frame_id=Some(68) reason=waiting_for_keyframe count=1
+t=2784.653ms frame_not_delivered frame_id=Some(69) reason=waiting_for_keyframe count=1
+t=2818.007ms frame_not_delivered frame_id=Some(70) reason=waiting_for_keyframe count=1
+t=2851.137ms frame_not_delivered frame_id=Some(71) reason=waiting_for_keyframe count=1
+t=2884.324ms frame_not_delivered frame_id=Some(72) reason=waiting_for_keyframe count=1
+t=2917.671ms frame_not_delivered frame_id=Some(73) reason=waiting_for_keyframe count=1
+t=2950.980ms frame_not_delivered frame_id=Some(74) reason=waiting_for_keyframe count=1
+t=2984.072ms frame_not_delivered frame_id=Some(75) reason=waiting_for_keyframe count=1
+t=2990.452ms keyframe_fragment_received frame_id=76 fragment=1/43
+t=2996.673ms keyframe_fragment_received frame_id=76 fragment=2/43
+t=3002.993ms keyframe_fragment_received frame_id=76 fragment=3/43
+t=3009.230ms keyframe_fragment_received frame_id=76 fragment=4/43
+t=3015.575ms keyframe_fragment_received frame_id=76 fragment=5/43
+t=3021.883ms keyframe_fragment_received frame_id=76 fragment=6/43
+t=3028.017ms keyframe_fragment_received frame_id=76 fragment=7/43
+t=3034.312ms keyframe_fragment_received frame_id=76 fragment=8/43
+t=3040.686ms keyframe_fragment_received frame_id=76 fragment=9/43
+t=3046.831ms keyframe_fragment_received frame_id=76 fragment=10/43
+t=3053.172ms keyframe_fragment_received frame_id=76 fragment=11/43
+t=3059.542ms keyframe_fragment_received frame_id=76 fragment=12/43
+t=3065.676ms keyframe_fragment_received frame_id=76 fragment=13/43
+t=3071.898ms keyframe_fragment_received frame_id=76 fragment=14/43
+t=3078.355ms keyframe_fragment_received frame_id=76 fragment=15/43
+t=3084.543ms keyframe_fragment_received frame_id=76 fragment=16/43
+t=3090.775ms keyframe_fragment_received frame_id=76 fragment=17/43
+t=3097.121ms keyframe_fragment_received frame_id=76 fragment=18/43
+t=3103.358ms keyframe_fragment_received frame_id=76 fragment=19/43
+t=3109.684ms keyframe_fragment_received frame_id=76 fragment=20/43
+t=3115.920ms keyframe_fragment_received frame_id=76 fragment=21/43
+t=3122.232ms keyframe_fragment_received frame_id=76 fragment=22/43
+t=3128.560ms keyframe_fragment_received frame_id=76 fragment=23/43
+t=3134.684ms keyframe_fragment_received frame_id=76 fragment=24/43
+t=3140.979ms keyframe_fragment_received frame_id=76 fragment=25/43
+t=3147.211ms keyframe_fragment_received frame_id=76 fragment=26/43
+t=3153.639ms keyframe_fragment_received frame_id=76 fragment=27/43
+t=3159.811ms keyframe_fragment_received frame_id=76 fragment=28/43
+t=3166.186ms keyframe_fragment_received frame_id=76 fragment=29/43
+t=3172.378ms keyframe_fragment_received frame_id=76 fragment=30/43
+t=3178.708ms keyframe_fragment_received frame_id=76 fragment=31/43
+t=3184.998ms keyframe_fragment_received frame_id=76 fragment=32/43
+t=3191.128ms keyframe_fragment_received frame_id=76 fragment=33/43
+t=3197.571ms keyframe_fragment_received frame_id=76 fragment=34/43
+t=3203.703ms keyframe_fragment_received frame_id=76 fragment=35/43
+t=3210.127ms keyframe_fragment_received frame_id=76 fragment=36/43
+t=3216.231ms keyframe_fragment_received frame_id=76 fragment=37/43
+t=3222.523ms keyframe_fragment_received frame_id=76 fragment=38/43
+t=3228.807ms keyframe_fragment_received frame_id=76 fragment=39/43
+t=3235.084ms keyframe_fragment_received frame_id=76 fragment=40/43
+t=3241.443ms keyframe_fragment_received frame_id=76 fragment=41/43
+t=3247.760ms keyframe_fragment_received frame_id=76 fragment=42/43
+t=3249.645ms keyframe_fragment_received frame_id=76 fragment=43/43
+t=3249.645ms keyframe_completed frame_id=76 fragments=43
+t=3249.645ms need_keyframe_cleared_after_keyframe_delivery
+t=3249.645ms keyframe_delivered frame_id=76
+t=3422.222ms keyframe_fragment_received frame_id=82 fragment=1/43
+t=3428.441ms keyframe_fragment_received frame_id=82 fragment=2/43
+t=3434.764ms keyframe_fragment_received frame_id=82 fragment=3/43
+t=3440.972ms keyframe_fragment_received frame_id=82 fragment=4/43
+t=3447.218ms keyframe_fragment_received frame_id=82 fragment=5/43
+t=3453.475ms keyframe_fragment_received frame_id=82 fragment=6/43
+t=3459.841ms keyframe_fragment_received frame_id=82 fragment=7/43
+t=3466.008ms keyframe_fragment_received frame_id=82 fragment=8/43
+t=3472.414ms keyframe_fragment_received frame_id=82 fragment=9/43
+t=3478.688ms keyframe_fragment_received frame_id=82 fragment=10/43
+t=3485.002ms keyframe_fragment_received frame_id=82 fragment=11/43
+t=3491.151ms keyframe_fragment_received frame_id=82 fragment=12/43
+t=3497.546ms keyframe_fragment_received frame_id=82 fragment=13/43
+t=3503.767ms keyframe_fragment_received frame_id=82 fragment=14/43
+t=3510.070ms keyframe_fragment_received frame_id=82 fragment=15/43
+t=3516.333ms keyframe_fragment_received frame_id=82 fragment=16/43
+t=3522.578ms keyframe_fragment_received frame_id=82 fragment=17/43
+t=3528.886ms keyframe_fragment_received frame_id=82 fragment=18/43
+t=3535.026ms keyframe_fragment_received frame_id=82 fragment=19/43
+t=3541.338ms keyframe_fragment_received frame_id=82 fragment=20/43
+t=3547.620ms keyframe_fragment_received frame_id=82 fragment=21/43
+t=3553.921ms keyframe_fragment_received frame_id=82 fragment=22/43
+t=3560.212ms keyframe_fragment_received frame_id=82 fragment=23/43
+t=3566.416ms keyframe_fragment_received frame_id=82 fragment=24/43
+t=3572.843ms keyframe_fragment_received frame_id=82 fragment=25/43
+t=3579.071ms keyframe_fragment_received frame_id=82 fragment=26/43
+t=3585.218ms keyframe_fragment_received frame_id=82 fragment=27/43
+t=3591.683ms keyframe_fragment_received frame_id=82 fragment=28/43
+t=3597.879ms keyframe_fragment_received frame_id=82 fragment=29/43
+t=3604.069ms keyframe_fragment_received frame_id=82 fragment=30/43
+t=3610.384ms keyframe_fragment_received frame_id=82 fragment=31/43
+t=3616.748ms keyframe_fragment_received frame_id=82 fragment=32/43
+t=3622.991ms keyframe_fragment_received frame_id=82 fragment=33/43
+t=3629.253ms keyframe_fragment_received frame_id=82 fragment=34/43
+t=3635.507ms keyframe_fragment_received frame_id=82 fragment=35/43
+t=3641.866ms keyframe_fragment_received frame_id=82 fragment=36/43
+t=3648.039ms keyframe_fragment_received frame_id=82 fragment=37/43
+t=3654.304ms keyframe_fragment_received frame_id=82 fragment=38/43
+t=3660.534ms keyframe_fragment_received frame_id=82 fragment=39/43
+t=3666.903ms keyframe_fragment_received frame_id=82 fragment=40/43
+t=3673.124ms keyframe_fragment_received frame_id=82 fragment=41/43
+t=3679.388ms keyframe_fragment_received frame_id=82 fragment=42/43
+t=3681.381ms keyframe_fragment_received frame_id=82 fragment=43/43
+t=3681.381ms keyframe_completed frame_id=82 fragments=43
+t=3681.381ms keyframe_delivered frame_id=82
+t=6615.933ms fragment_lost loss_event=3 frame_id=198 fragment=5/6 KEY=0 CONFIG=0 cause=iid_or_burst_loss
+t=7577.487ms loss_declared triggering_frame_id=Some(199) incomplete=1 gap=0 evicted=0 inconsistent=0
+t=7577.487ms frame_not_delivered frame_id=Some(199) reason=waiting_for_keyframe count=1
+t=7577.487ms need_keyframe_set_after_loss
+t=7577.487ms need_keyframe=true request_emitted backoff_step=1 elapsed_since_prior_request_ms=0
+t=7597.487ms request_arrived_at_simulated_sender
+t=7610.764ms frame_not_delivered frame_id=Some(200) reason=waiting_for_keyframe count=1
+t=7633.257ms keyframe_sent frame_id=229 bytes=50000 fragments=43 KEY=1 CONFIG=1
+t=7644.044ms frame_not_delivered frame_id=Some(201) reason=waiting_for_keyframe count=1
+t=7677.277ms frame_not_delivered frame_id=Some(202) reason=waiting_for_keyframe count=1
+t=7710.616ms frame_not_delivered frame_id=Some(203) reason=waiting_for_keyframe count=1
+t=7743.849ms frame_not_delivered frame_id=Some(204) reason=waiting_for_keyframe count=1
+t=7776.989ms frame_not_delivered frame_id=Some(205) reason=waiting_for_keyframe count=1
+t=7781.589ms need_keyframe=true request_emitted backoff_step=2 elapsed_since_prior_request_ms=204
+t=7801.589ms request_arrived_at_simulated_sender
+t=7810.342ms frame_not_delivered frame_id=Some(206) reason=waiting_for_keyframe count=1
+t=7833.255ms keyframe_sent frame_id=235 bytes=50000 fragments=43 KEY=1 CONFIG=1
+t=7843.541ms frame_not_delivered frame_id=Some(207) reason=waiting_for_keyframe count=1
+t=7843.730ms fragment_lost loss_event=4 frame_id=235 fragment=23/43 KEY=1 CONFIG=1 cause=iid_or_burst_loss
+t=7876.819ms frame_not_delivered frame_id=Some(208) reason=waiting_for_keyframe count=1
+t=7910.013ms frame_not_delivered frame_id=Some(209) reason=waiting_for_keyframe count=1
+t=7943.311ms frame_not_delivered frame_id=Some(210) reason=waiting_for_keyframe count=1
+t=7976.442ms frame_not_delivered frame_id=Some(211) reason=waiting_for_keyframe count=1
+t=8009.826ms frame_not_delivered frame_id=Some(212) reason=waiting_for_keyframe count=1
+t=8042.937ms frame_not_delivered frame_id=Some(213) reason=waiting_for_keyframe count=1
+t=8076.236ms frame_not_delivered frame_id=Some(214) reason=waiting_for_keyframe count=1
+t=8109.435ms frame_not_delivered frame_id=Some(215) reason=waiting_for_keyframe count=1
+t=8142.715ms frame_not_delivered frame_id=Some(216) reason=waiting_for_keyframe count=1
+t=8175.962ms frame_not_delivered frame_id=Some(217) reason=waiting_for_keyframe count=1
+t=8182.187ms need_keyframe=true request_emitted backoff_step=3 elapsed_since_prior_request_ms=400
+t=8202.187ms request_arrived_at_simulated_sender
+t=8209.352ms frame_not_delivered frame_id=Some(218) reason=waiting_for_keyframe count=1
+t=8233.251ms keyframe_sent frame_id=247 bytes=50000 fragments=43 KEY=1 CONFIG=1
+t=8242.560ms frame_not_delivered frame_id=Some(219) reason=waiting_for_keyframe count=1
+t=8275.811ms frame_not_delivered frame_id=Some(220) reason=waiting_for_keyframe count=1
+t=8309.065ms frame_not_delivered frame_id=Some(221) reason=waiting_for_keyframe count=1
+t=8342.265ms frame_not_delivered frame_id=Some(222) reason=waiting_for_keyframe count=1
+t=8375.564ms frame_not_delivered frame_id=Some(223) reason=waiting_for_keyframe count=1
+t=8408.752ms frame_not_delivered frame_id=Some(224) reason=waiting_for_keyframe count=1
+t=8441.906ms frame_not_delivered frame_id=Some(225) reason=waiting_for_keyframe count=1
+t=8475.173ms frame_not_delivered frame_id=Some(226) reason=waiting_for_keyframe count=1
+t=8508.498ms frame_not_delivered frame_id=Some(227) reason=waiting_for_keyframe count=1
+t=8541.643ms frame_not_delivered frame_id=Some(228) reason=waiting_for_keyframe count=1
+t=8548.047ms keyframe_fragment_received frame_id=229 fragment=1/43
+t=8554.289ms keyframe_fragment_received frame_id=229 fragment=2/43
+t=8560.462ms keyframe_fragment_received frame_id=229 fragment=3/43
+t=8566.781ms keyframe_fragment_received frame_id=229 fragment=4/43
+t=8573.043ms keyframe_fragment_received frame_id=229 fragment=5/43
+t=8579.298ms keyframe_fragment_received frame_id=229 fragment=6/43
+t=8585.652ms keyframe_fragment_received frame_id=229 fragment=7/43
+t=8591.953ms keyframe_fragment_received frame_id=229 fragment=8/43
+t=8598.178ms keyframe_fragment_received frame_id=229 fragment=9/43
+t=8604.415ms keyframe_fragment_received frame_id=229 fragment=10/43
+t=8610.837ms keyframe_fragment_received frame_id=229 fragment=11/43
+t=8617.093ms keyframe_fragment_received frame_id=229 fragment=12/43
+t=8623.352ms keyframe_fragment_received frame_id=229 fragment=13/43
+t=8629.602ms keyframe_fragment_received frame_id=229 fragment=14/43
+t=8635.758ms keyframe_fragment_received frame_id=229 fragment=15/43
+t=8642.072ms keyframe_fragment_received frame_id=229 fragment=16/43
+t=8648.481ms keyframe_fragment_received frame_id=229 fragment=17/43
+t=8654.749ms keyframe_fragment_received frame_id=229 fragment=18/43
+t=8660.932ms keyframe_fragment_received frame_id=229 fragment=19/43
+t=8667.280ms keyframe_fragment_received frame_id=229 fragment=20/43
+t=8673.469ms keyframe_fragment_received frame_id=229 fragment=21/43
+t=8679.697ms keyframe_fragment_received frame_id=229 fragment=22/43
+t=8686.067ms keyframe_fragment_received frame_id=229 fragment=23/43
+t=8692.242ms keyframe_fragment_received frame_id=229 fragment=24/43
+t=8698.537ms keyframe_fragment_received frame_id=229 fragment=25/43
+t=8704.904ms keyframe_fragment_received frame_id=229 fragment=26/43
+t=8711.124ms keyframe_fragment_received frame_id=229 fragment=27/43
+t=8717.441ms keyframe_fragment_received frame_id=229 fragment=28/43
+t=8723.668ms keyframe_fragment_received frame_id=229 fragment=29/43
+t=8730.031ms keyframe_fragment_received frame_id=229 fragment=30/43
+t=8736.352ms keyframe_fragment_received frame_id=229 fragment=31/43
+t=8742.589ms keyframe_fragment_received frame_id=229 fragment=32/43
+t=8748.884ms keyframe_fragment_received frame_id=229 fragment=33/43
+t=8755.000ms keyframe_fragment_received frame_id=229 fragment=34/43
+t=8761.289ms keyframe_fragment_received frame_id=229 fragment=35/43
+t=8767.603ms keyframe_fragment_received frame_id=229 fragment=36/43
+t=8773.873ms keyframe_fragment_received frame_id=229 fragment=37/43
+t=8780.253ms keyframe_fragment_received frame_id=229 fragment=38/43
+t=8786.510ms keyframe_fragment_received frame_id=229 fragment=39/43
+t=8792.686ms keyframe_fragment_received frame_id=229 fragment=40/43
+t=8799.031ms keyframe_fragment_received frame_id=229 fragment=41/43
+t=8805.226ms keyframe_fragment_received frame_id=229 fragment=42/43
+t=8807.180ms keyframe_fragment_received frame_id=229 fragment=43/43
+t=8807.180ms keyframe_completed frame_id=229 fragments=43
+t=8807.180ms need_keyframe_cleared_after_keyframe_delivery
+t=8807.180ms keyframe_delivered frame_id=229
+t=8979.816ms keyframe_fragment_received frame_id=235 fragment=1/43
+t=8986.043ms keyframe_fragment_received frame_id=235 fragment=2/43
+t=8992.277ms keyframe_fragment_received frame_id=235 fragment=3/43
+t=8998.644ms keyframe_fragment_received frame_id=235 fragment=4/43
+t=9004.894ms keyframe_fragment_received frame_id=235 fragment=5/43
+t=9011.095ms keyframe_fragment_received frame_id=235 fragment=6/43
+t=9017.349ms keyframe_fragment_received frame_id=235 fragment=7/43
+t=9023.618ms keyframe_fragment_received frame_id=235 fragment=8/43
+t=9029.955ms keyframe_fragment_received frame_id=235 fragment=9/43
+t=9036.144ms keyframe_fragment_received frame_id=235 fragment=10/43
+t=9042.513ms keyframe_fragment_received frame_id=235 fragment=11/43
+t=9048.700ms keyframe_fragment_received frame_id=235 fragment=12/43
+t=9054.974ms keyframe_fragment_received frame_id=235 fragment=13/43
+t=9061.237ms keyframe_fragment_received frame_id=235 fragment=14/43
+t=9067.604ms keyframe_fragment_received frame_id=235 fragment=15/43
+t=9073.823ms keyframe_fragment_received frame_id=235 fragment=16/43
+t=9080.086ms keyframe_fragment_received frame_id=235 fragment=17/43
+t=9086.366ms keyframe_fragment_received frame_id=235 fragment=18/43
+t=9092.786ms keyframe_fragment_received frame_id=235 fragment=19/43
+t=9099.061ms keyframe_fragment_received frame_id=235 fragment=20/43
+t=9105.205ms keyframe_fragment_received frame_id=235 fragment=21/43
+t=9111.448ms keyframe_fragment_received frame_id=235 fragment=22/43
+t=9117.849ms keyframe_fragment_received frame_id=235 fragment=24/43
+t=9124.101ms keyframe_fragment_received frame_id=235 fragment=25/43
+t=9130.355ms keyframe_fragment_received frame_id=235 fragment=26/43
+t=9136.542ms keyframe_fragment_received frame_id=235 fragment=27/43
+t=9142.831ms keyframe_fragment_received frame_id=235 fragment=28/43
+t=9149.264ms keyframe_fragment_received frame_id=235 fragment=29/43
+t=9155.459ms keyframe_fragment_received frame_id=235 fragment=30/43
+t=9161.724ms keyframe_fragment_received frame_id=235 fragment=31/43
+t=9167.915ms keyframe_fragment_received frame_id=235 fragment=32/43
+t=9174.343ms keyframe_fragment_received frame_id=235 fragment=33/43
+t=9180.564ms keyframe_fragment_received frame_id=235 fragment=34/43
+t=9186.773ms keyframe_fragment_received frame_id=235 fragment=35/43
+t=9193.148ms keyframe_fragment_received frame_id=235 fragment=36/43
+t=9199.348ms keyframe_fragment_received frame_id=235 fragment=37/43
+t=9205.626ms keyframe_fragment_received frame_id=235 fragment=38/43
+t=9211.846ms keyframe_fragment_received frame_id=235 fragment=39/43
+t=9218.190ms keyframe_fragment_received frame_id=235 fragment=40/43
+t=9224.454ms keyframe_fragment_received frame_id=235 fragment=41/43
+t=9230.706ms keyframe_fragment_received frame_id=235 fragment=42/43
+t=9232.708ms keyframe_fragment_received frame_id=235 fragment=43/43
+t=9265.941ms loss_declared triggering_frame_id=Some(236) incomplete=1 gap=0 evicted=0 inconsistent=0
+t=9265.941ms frame_not_delivered frame_id=Some(236) reason=waiting_for_keyframe count=1
+t=9265.941ms need_keyframe_set_after_loss
+t=9265.941ms need_keyframe=true request_emitted backoff_step=1 elapsed_since_prior_request_ms=0
+t=9285.941ms request_arrived_at_simulated_sender
+t=9299.267ms frame_not_delivered frame_id=Some(237) reason=waiting_for_keyframe count=1
+t=9299.907ms keyframe_sent frame_id=279 bytes=50000 fragments=43 KEY=1 CONFIG=1
+t=9316.096ms fragment_lost loss_event=5 frame_id=279 fragment=35/43 KEY=1 CONFIG=1 cause=iid_or_burst_loss
+t=9332.368ms frame_not_delivered frame_id=Some(238) reason=waiting_for_keyframe count=1
+t=9365.593ms frame_not_delivered frame_id=Some(239) reason=waiting_for_keyframe count=1
+t=9398.975ms frame_not_delivered frame_id=Some(240) reason=waiting_for_keyframe count=1
+t=9432.279ms frame_not_delivered frame_id=Some(241) reason=waiting_for_keyframe count=1
+t=9465.436ms frame_not_delivered frame_id=Some(242) reason=waiting_for_keyframe count=1
+t=9466.572ms need_keyframe=true request_emitted backoff_step=2 elapsed_since_prior_request_ms=200
+t=9486.572ms request_arrived_at_simulated_sender
+t=9498.707ms frame_not_delivered frame_id=Some(243) reason=waiting_for_keyframe count=1
+t=9499.905ms keyframe_sent frame_id=285 bytes=50000 fragments=43 KEY=1 CONFIG=1
+t=9531.853ms frame_not_delivered frame_id=Some(244) reason=waiting_for_keyframe count=1
+t=9565.263ms frame_not_delivered frame_id=Some(245) reason=waiting_for_keyframe count=1
+t=9598.331ms frame_not_delivered frame_id=Some(246) reason=waiting_for_keyframe count=1
+t=9604.662ms keyframe_fragment_received frame_id=247 fragment=1/43
+t=9610.877ms keyframe_fragment_received frame_id=247 fragment=2/43
+t=9617.162ms keyframe_fragment_received frame_id=247 fragment=3/43
+t=9623.603ms keyframe_fragment_received frame_id=247 fragment=4/43
+t=9629.865ms keyframe_fragment_received frame_id=247 fragment=5/43
+t=9636.034ms keyframe_fragment_received frame_id=247 fragment=6/43
+t=9642.287ms keyframe_fragment_received frame_id=247 fragment=7/43
+t=9648.574ms keyframe_fragment_received frame_id=247 fragment=8/43
+t=9654.898ms keyframe_fragment_received frame_id=247 fragment=9/43
+t=9661.094ms keyframe_fragment_received frame_id=247 fragment=10/43
+t=9667.496ms keyframe_fragment_received frame_id=247 fragment=11/43
+t=9673.713ms keyframe_fragment_received frame_id=247 fragment=12/43
+t=9680.003ms keyframe_fragment_received frame_id=247 fragment=13/43
+t=9686.352ms keyframe_fragment_received frame_id=247 fragment=14/43
+t=9692.496ms keyframe_fragment_received frame_id=247 fragment=15/43
+t=9698.908ms keyframe_fragment_received frame_id=247 fragment=16/43
+t=9705.188ms keyframe_fragment_received frame_id=247 fragment=17/43
+t=9711.381ms keyframe_fragment_received frame_id=247 fragment=18/43
+t=9717.717ms keyframe_fragment_received frame_id=247 fragment=19/43
+t=9724.008ms keyframe_fragment_received frame_id=247 fragment=20/43
+t=9730.188ms keyframe_fragment_received frame_id=247 fragment=21/43
+t=9736.452ms keyframe_fragment_received frame_id=247 fragment=22/43
+t=9742.766ms keyframe_fragment_received frame_id=247 fragment=23/43
+t=9749.060ms keyframe_fragment_received frame_id=247 fragment=24/43
+t=9755.310ms keyframe_fragment_received frame_id=247 fragment=25/43
+t=9761.494ms keyframe_fragment_received frame_id=247 fragment=26/43
+t=9767.815ms keyframe_fragment_received frame_id=247 fragment=27/43
+t=9774.128ms keyframe_fragment_received frame_id=247 fragment=28/43
+t=9780.379ms keyframe_fragment_received frame_id=247 fragment=29/43
+t=9786.753ms keyframe_fragment_received frame_id=247 fragment=30/43
+t=9793.023ms keyframe_fragment_received frame_id=247 fragment=31/43
+t=9799.174ms keyframe_fragment_received frame_id=247 fragment=32/43
+t=9805.492ms keyframe_fragment_received frame_id=247 fragment=33/43
+t=9811.855ms keyframe_fragment_received frame_id=247 fragment=34/43
+t=9817.999ms keyframe_fragment_received frame_id=247 fragment=35/43
+t=9824.340ms keyframe_fragment_received frame_id=247 fragment=36/43
+t=9830.601ms keyframe_fragment_received frame_id=247 fragment=37/43
+t=9836.965ms keyframe_fragment_received frame_id=247 fragment=38/43
+t=9843.097ms keyframe_fragment_received frame_id=247 fragment=39/43
+t=9849.402ms keyframe_fragment_received frame_id=247 fragment=40/43
+t=9855.609ms keyframe_fragment_received frame_id=247 fragment=41/43
+t=9862.035ms keyframe_fragment_received frame_id=247 fragment=42/43
+t=9863.852ms keyframe_fragment_received frame_id=247 fragment=43/43
+t=9863.852ms keyframe_completed frame_id=247 fragments=43
+t=9863.852ms need_keyframe_cleared_after_keyframe_delivery
+t=9863.852ms keyframe_delivered frame_id=247
+t=9878.567ms fragment_lost loss_event=6 frame_id=296 fragment=4/6 KEY=0 CONFIG=0 cause=iid_or_burst_loss
+t=9915.900ms fragment_lost loss_event=7 frame_id=297 fragment=5/6 KEY=0 CONFIG=0 cause=iid_or_burst_loss
+t=10607.893ms fragment_lost loss_event=8 frame_id=318 fragment=3/6 KEY=0 CONFIG=0 cause=iid_or_burst_loss
+t=10902.770ms keyframe_fragment_received frame_id=279 fragment=1/43
+t=10909.050ms keyframe_fragment_received frame_id=279 fragment=2/43
+t=10915.219ms keyframe_fragment_received frame_id=279 fragment=3/43
+t=10921.504ms keyframe_fragment_received frame_id=279 fragment=4/43
+t=10927.783ms keyframe_fragment_received frame_id=279 fragment=5/43
+t=10934.159ms keyframe_fragment_received frame_id=279 fragment=6/43
+t=10940.290ms keyframe_fragment_received frame_id=279 fragment=7/43
+t=10946.724ms keyframe_fragment_received frame_id=279 fragment=8/43
+t=10952.900ms keyframe_fragment_received frame_id=279 fragment=9/43
+t=10959.244ms keyframe_fragment_received frame_id=279 fragment=10/43
+t=10965.534ms keyframe_fragment_received frame_id=279 fragment=11/43
+t=10971.697ms keyframe_fragment_received frame_id=279 fragment=12/43
+t=10977.997ms keyframe_fragment_received frame_id=279 fragment=13/43
+t=10984.280ms keyframe_fragment_received frame_id=279 fragment=14/43
+t=10990.492ms keyframe_fragment_received frame_id=279 fragment=15/43
+t=10996.845ms keyframe_fragment_received frame_id=279 fragment=16/43
+t=11003.117ms keyframe_fragment_received frame_id=279 fragment=17/43
+t=11009.365ms keyframe_fragment_received frame_id=279 fragment=18/43
+t=11015.604ms keyframe_fragment_received frame_id=279 fragment=19/43
+t=11021.941ms keyframe_fragment_received frame_id=279 fragment=20/43
+t=11028.228ms keyframe_fragment_received frame_id=279 fragment=21/43
+t=11034.477ms keyframe_fragment_received frame_id=279 fragment=22/43
+t=11040.775ms keyframe_fragment_received frame_id=279 fragment=23/43
+t=11046.962ms keyframe_fragment_received frame_id=279 fragment=24/43
+t=11053.329ms keyframe_fragment_received frame_id=279 fragment=25/43
+t=11059.573ms keyframe_fragment_received frame_id=279 fragment=26/43
+t=11065.822ms keyframe_fragment_received frame_id=279 fragment=27/43
+t=11072.101ms keyframe_fragment_received frame_id=279 fragment=28/43
+t=11078.522ms keyframe_fragment_received frame_id=279 fragment=29/43
+t=11084.711ms keyframe_fragment_received frame_id=279 fragment=30/43
+t=11091.006ms keyframe_fragment_received frame_id=279 fragment=31/43
+t=11097.240ms keyframe_fragment_received frame_id=279 fragment=32/43
+t=11103.590ms keyframe_fragment_received frame_id=279 fragment=33/43
+t=11109.862ms keyframe_fragment_received frame_id=279 fragment=34/43
+t=11116.139ms keyframe_fragment_received frame_id=279 fragment=36/43
+t=11122.400ms keyframe_fragment_received frame_id=279 fragment=37/43
+t=11128.599ms keyframe_fragment_received frame_id=279 fragment=38/43
+t=11134.931ms keyframe_fragment_received frame_id=279 fragment=39/43
+t=11141.244ms keyframe_fragment_received frame_id=279 fragment=40/43
+t=11147.524ms keyframe_fragment_received frame_id=279 fragment=41/43
+t=11153.774ms keyframe_fragment_received frame_id=279 fragment=42/43
+t=11155.759ms keyframe_fragment_received frame_id=279 fragment=43/43
+t=11188.846ms loss_declared triggering_frame_id=Some(280) incomplete=1 gap=0 evicted=0 inconsistent=0
+t=11188.846ms frame_not_delivered frame_id=Some(280) reason=waiting_for_keyframe count=1
+t=11188.846ms need_keyframe_set_after_loss
+t=11188.846ms need_keyframe=true request_emitted backoff_step=1 elapsed_since_prior_request_ms=0
+t=11208.846ms request_arrived_at_simulated_sender
+t=11222.159ms frame_not_delivered frame_id=Some(281) reason=waiting_for_keyframe count=1
+t=11233.221ms keyframe_sent frame_id=337 bytes=50000 fragments=43 KEY=1 CONFIG=1
+t=11255.394ms frame_not_delivered frame_id=Some(282) reason=waiting_for_keyframe count=1
+t=11288.748ms frame_not_delivered frame_id=Some(283) reason=waiting_for_keyframe count=1
+t=11321.840ms frame_not_delivered frame_id=Some(284) reason=waiting_for_keyframe count=1
+t=11328.259ms keyframe_fragment_received frame_id=285 fragment=1/43
+t=11334.547ms keyframe_fragment_received frame_id=285 fragment=2/43
+t=11340.820ms keyframe_fragment_received frame_id=285 fragment=3/43
+t=11347.039ms keyframe_fragment_received frame_id=285 fragment=4/43
+t=11353.271ms keyframe_fragment_received frame_id=285 fragment=5/43
+t=11359.599ms keyframe_fragment_received frame_id=285 fragment=6/43
+t=11365.888ms keyframe_fragment_received frame_id=285 fragment=7/43
+t=11372.020ms keyframe_fragment_received frame_id=285 fragment=8/43
+t=11378.353ms keyframe_fragment_received frame_id=285 fragment=9/43
+t=11384.736ms keyframe_fragment_received frame_id=285 fragment=10/43
+t=11390.935ms keyframe_fragment_received frame_id=285 fragment=11/43
+t=11397.162ms keyframe_fragment_received frame_id=285 fragment=12/43
+t=11403.577ms keyframe_fragment_received frame_id=285 fragment=13/43
+t=11409.687ms keyframe_fragment_received frame_id=285 fragment=14/43
+t=11416.088ms keyframe_fragment_received frame_id=285 fragment=15/43
+t=11422.372ms keyframe_fragment_received frame_id=285 fragment=16/43
+t=11428.679ms keyframe_fragment_received frame_id=285 fragment=17/43
+t=11434.781ms keyframe_fragment_received frame_id=285 fragment=18/43
+t=11441.071ms keyframe_fragment_received frame_id=285 fragment=19/43
+t=11447.501ms keyframe_fragment_received frame_id=285 fragment=20/43
+t=11453.769ms keyframe_fragment_received frame_id=285 fragment=21/43
+t=11459.940ms keyframe_fragment_received frame_id=285 fragment=22/43
+t=11466.215ms keyframe_fragment_received frame_id=285 fragment=23/43
+t=11472.504ms keyframe_fragment_received frame_id=285 fragment=24/43
+t=11478.742ms keyframe_fragment_received frame_id=285 fragment=25/43
+t=11485.030ms keyframe_fragment_received frame_id=285 fragment=26/43
+t=11491.428ms keyframe_fragment_received frame_id=285 fragment=27/43
+t=11497.580ms keyframe_fragment_received frame_id=285 fragment=28/43
+t=11503.812ms keyframe_fragment_received frame_id=285 fragment=29/43
+t=11510.240ms keyframe_fragment_received frame_id=285 fragment=30/43
+t=11516.504ms keyframe_fragment_received frame_id=285 fragment=31/43
+t=11522.797ms keyframe_fragment_received frame_id=285 fragment=32/43
+t=11529.078ms keyframe_fragment_received frame_id=285 fragment=33/43
+t=11535.251ms keyframe_fragment_received frame_id=285 fragment=34/43
+t=11541.566ms keyframe_fragment_received frame_id=285 fragment=35/43
+t=11547.811ms keyframe_fragment_received frame_id=285 fragment=36/43
+t=11554.001ms keyframe_fragment_received frame_id=285 fragment=37/43
+t=11560.308ms keyframe_fragment_received frame_id=285 fragment=38/43
+t=11566.613ms keyframe_fragment_received frame_id=285 fragment=39/43
+t=11572.977ms keyframe_fragment_received frame_id=285 fragment=40/43
+t=11579.164ms keyframe_fragment_received frame_id=285 fragment=41/43
+t=11585.371ms keyframe_fragment_received frame_id=285 fragment=42/43
+t=11587.326ms keyframe_fragment_received frame_id=285 fragment=43/43
+t=11587.326ms keyframe_completed frame_id=285 fragments=43
+t=11587.326ms need_keyframe_cleared_after_keyframe_delivery
+t=11587.326ms keyframe_delivered frame_id=285
+t=12007.175ms loss_declared triggering_frame_id=Some(298) incomplete=2 gap=0 evicted=0 inconsistent=0
+t=12007.175ms frame_not_delivered frame_id=Some(298) reason=waiting_for_keyframe count=1
+t=12007.175ms need_keyframe_set_after_loss
+t=12007.175ms need_keyframe=true request_emitted backoff_step=1 elapsed_since_prior_request_ms=0
+t=12027.175ms request_arrived_at_simulated_sender
+t=12040.280ms frame_not_delivered frame_id=Some(299) reason=waiting_for_keyframe count=1
+t=12066.546ms keyframe_sent frame_id=362 bytes=50000 fragments=43 KEY=1 CONFIG=1
+t=12073.617ms frame_not_delivered frame_id=Some(300) reason=waiting_for_keyframe count=1
+t=12106.898ms frame_not_delivered frame_id=Some(301) reason=waiting_for_keyframe count=1
+t=12140.166ms frame_not_delivered frame_id=Some(302) reason=waiting_for_keyframe count=1
+t=12173.306ms frame_not_delivered frame_id=Some(303) reason=waiting_for_keyframe count=1
+t=12209.878ms need_keyframe=true request_emitted backoff_step=2 elapsed_since_prior_request_ms=202
+t=12212.917ms frame_not_delivered frame_id=Some(304) reason=waiting_for_keyframe count=1
+t=12229.878ms request_arrived_at_simulated_sender
+t=12246.020ms frame_not_delivered frame_id=Some(305) reason=waiting_for_keyframe count=1
+t=12266.544ms keyframe_sent frame_id=368 bytes=50000 fragments=43 KEY=1 CONFIG=1
+t=12267.496ms fragment_lost loss_event=9 frame_id=368 fragment=3/43 KEY=1 CONFIG=1 cause=iid_or_burst_loss
+t=12279.310ms frame_not_delivered frame_id=Some(306) reason=waiting_for_keyframe count=1
+t=12312.674ms frame_not_delivered frame_id=Some(307) reason=waiting_for_keyframe count=1
+t=12345.781ms frame_not_delivered frame_id=Some(308) reason=waiting_for_keyframe count=1
+t=12379.134ms frame_not_delivered frame_id=Some(309) reason=waiting_for_keyframe count=1
+t=12412.240ms frame_not_delivered frame_id=Some(310) reason=waiting_for_keyframe count=1
+t=12445.623ms frame_not_delivered frame_id=Some(311) reason=waiting_for_keyframe count=1
+t=12478.815ms frame_not_delivered frame_id=Some(312) reason=waiting_for_keyframe count=1
+t=12511.972ms frame_not_delivered frame_id=Some(313) reason=waiting_for_keyframe count=1
+t=12545.226ms frame_not_delivered frame_id=Some(314) reason=waiting_for_keyframe count=1
+t=12578.549ms frame_not_delivered frame_id=Some(315) reason=waiting_for_keyframe count=1
+t=12610.017ms need_keyframe=true request_emitted backoff_step=3 elapsed_since_prior_request_ms=400
+t=12611.871ms frame_not_delivered frame_id=Some(316) reason=waiting_for_keyframe count=1
+t=12615.873ms fragment_lost loss_event=10 frame_id=378 fragment=5/6 KEY=0 CONFIG=0 cause=iid_or_burst_loss
+t=12630.017ms request_arrived_at_simulated_sender
+t=12645.150ms frame_not_delivered frame_id=Some(317) reason=waiting_for_keyframe count=1
+t=12666.540ms keyframe_sent frame_id=380 bytes=50000 fragments=43 KEY=1 CONFIG=1
+t=12705.201ms loss_declared triggering_frame_id=Some(319) incomplete=1 gap=0 evicted=0 inconsistent=0
+t=12705.201ms frame_not_delivered frame_id=Some(319) reason=waiting_for_keyframe count=1
+t=12738.580ms frame_not_delivered frame_id=Some(320) reason=waiting_for_keyframe count=1
+t=12771.772ms frame_not_delivered frame_id=Some(321) reason=waiting_for_keyframe count=1
+t=12805.052ms frame_not_delivered frame_id=Some(322) reason=waiting_for_keyframe count=1
+t=12838.251ms frame_not_delivered frame_id=Some(323) reason=waiting_for_keyframe count=1
+t=12871.505ms frame_not_delivered frame_id=Some(324) reason=waiting_for_keyframe count=1
+t=12904.802ms frame_not_delivered frame_id=Some(325) reason=waiting_for_keyframe count=1
+t=12937.941ms frame_not_delivered frame_id=Some(326) reason=waiting_for_keyframe count=1
+t=12971.219ms frame_not_delivered frame_id=Some(327) reason=waiting_for_keyframe count=1
+t=13004.548ms frame_not_delivered frame_id=Some(328) reason=waiting_for_keyframe count=1
+t=13037.840ms frame_not_delivered frame_id=Some(329) reason=waiting_for_keyframe count=1
+t=13071.062ms frame_not_delivered frame_id=Some(330) reason=waiting_for_keyframe count=1
+t=13104.146ms frame_not_delivered frame_id=Some(331) reason=waiting_for_keyframe count=1
+t=13137.546ms frame_not_delivered frame_id=Some(332) reason=waiting_for_keyframe count=1
+t=13170.649ms frame_not_delivered frame_id=Some(333) reason=waiting_for_keyframe count=1
+t=13203.958ms frame_not_delivered frame_id=Some(334) reason=waiting_for_keyframe count=1
+t=13237.210ms frame_not_delivered frame_id=Some(335) reason=waiting_for_keyframe count=1
+t=13270.507ms frame_not_delivered frame_id=Some(336) reason=waiting_for_keyframe count=1
+t=13276.829ms keyframe_fragment_received frame_id=337 fragment=1/43
+t=13283.091ms keyframe_fragment_received frame_id=337 fragment=2/43
+t=13289.381ms keyframe_fragment_received frame_id=337 fragment=3/43
+t=13295.666ms keyframe_fragment_received frame_id=337 fragment=4/43
+t=13301.806ms keyframe_fragment_received frame_id=337 fragment=5/43
+t=13308.141ms keyframe_fragment_received frame_id=337 fragment=6/43
+t=13314.309ms keyframe_fragment_received frame_id=337 fragment=7/43
+t=13320.651ms keyframe_fragment_received frame_id=337 fragment=8/43
+t=13326.898ms keyframe_fragment_received frame_id=337 fragment=9/43
+t=13333.181ms keyframe_fragment_received frame_id=337 fragment=10/43
+t=13339.527ms keyframe_fragment_received frame_id=337 fragment=11/43
+t=13345.829ms keyframe_fragment_received frame_id=337 fragment=12/43
+t=13352.103ms keyframe_fragment_received frame_id=337 fragment=13/43
+t=13358.264ms keyframe_fragment_received frame_id=337 fragment=14/43
+t=13364.624ms keyframe_fragment_received frame_id=337 fragment=15/43
+t=13370.877ms keyframe_fragment_received frame_id=337 fragment=16/43
+t=13377.202ms keyframe_fragment_received frame_id=337 fragment=17/43
+t=13383.374ms keyframe_fragment_received frame_id=337 fragment=18/43
+t=13389.638ms keyframe_fragment_received frame_id=337 fragment=19/43
+t=13396.055ms keyframe_fragment_received frame_id=337 fragment=20/43
+t=13402.327ms keyframe_fragment_received frame_id=337 fragment=21/43
+t=13408.439ms keyframe_fragment_received frame_id=337 fragment=22/43
+t=13414.881ms keyframe_fragment_received frame_id=337 fragment=23/43
+t=13421.053ms keyframe_fragment_received frame_id=337 fragment=24/43
+t=13427.390ms keyframe_fragment_received frame_id=337 fragment=25/43
+t=13433.671ms keyframe_fragment_received frame_id=337 fragment=26/43
+t=13439.829ms keyframe_fragment_received frame_id=337 fragment=27/43
+t=13446.125ms keyframe_fragment_received frame_id=337 fragment=28/43
+t=13452.502ms keyframe_fragment_received frame_id=337 fragment=29/43
+t=13458.646ms keyframe_fragment_received frame_id=337 fragment=30/43
+t=13464.914ms keyframe_fragment_received frame_id=337 fragment=31/43
+t=13471.204ms keyframe_fragment_received frame_id=337 fragment=32/43
+t=13477.517ms keyframe_fragment_received frame_id=337 fragment=33/43
+t=13483.818ms keyframe_fragment_received frame_id=337 fragment=34/43
+t=13490.186ms keyframe_fragment_received frame_id=337 fragment=35/43
+t=13496.407ms keyframe_fragment_received frame_id=337 fragment=36/43
+t=13502.608ms keyframe_fragment_received frame_id=337 fragment=37/43
+t=13509.013ms keyframe_fragment_received frame_id=337 fragment=38/43
+t=13515.203ms keyframe_fragment_received frame_id=337 fragment=39/43
+t=13521.401ms keyframe_fragment_received frame_id=337 fragment=40/43
+t=13527.747ms keyframe_fragment_received frame_id=337 fragment=41/43
+t=13534.045ms keyframe_fragment_received frame_id=337 fragment=42/43
+t=13536.065ms keyframe_fragment_received frame_id=337 fragment=43/43
+t=13536.065ms keyframe_completed frame_id=337 fragments=43
+t=13536.065ms need_keyframe_cleared_after_keyframe_delivery
+t=13536.065ms keyframe_delivered frame_id=337
+t=14340.227ms keyframe_fragment_received frame_id=362 fragment=1/43
+t=14346.473ms keyframe_fragment_received frame_id=362 fragment=2/43
+t=14352.792ms keyframe_fragment_received frame_id=362 fragment=3/43
+t=14359.070ms keyframe_fragment_received frame_id=362 fragment=4/43
+t=14365.338ms keyframe_fragment_received frame_id=362 fragment=5/43
+t=14371.488ms keyframe_fragment_received frame_id=362 fragment=6/43
+t=14377.917ms keyframe_fragment_received frame_id=362 fragment=7/43
+t=14384.174ms keyframe_fragment_received frame_id=362 fragment=8/43
+t=14390.410ms keyframe_fragment_received frame_id=362 fragment=9/43
+t=14396.620ms keyframe_fragment_received frame_id=362 fragment=10/43
+t=14402.929ms keyframe_fragment_received frame_id=362 fragment=11/43
+t=14409.226ms keyframe_fragment_received frame_id=362 fragment=12/43
+t=14415.492ms keyframe_fragment_received frame_id=362 fragment=13/43
+t=14421.804ms keyframe_fragment_received frame_id=362 fragment=14/43
+t=14428.010ms keyframe_fragment_received frame_id=362 fragment=15/43
+t=14434.356ms keyframe_fragment_received frame_id=362 fragment=16/43
+t=14440.608ms keyframe_fragment_received frame_id=362 fragment=17/43
+t=14446.831ms keyframe_fragment_received frame_id=362 fragment=18/43
+t=14453.188ms keyframe_fragment_received frame_id=362 fragment=19/43
+t=14459.339ms keyframe_fragment_received frame_id=362 fragment=20/43
+t=14465.698ms keyframe_fragment_received frame_id=362 fragment=21/43
+t=14472.042ms keyframe_fragment_received frame_id=362 fragment=22/43
+t=14478.285ms keyframe_fragment_received frame_id=362 fragment=23/43
+t=14484.457ms keyframe_fragment_received frame_id=362 fragment=24/43
+t=14490.770ms keyframe_fragment_received frame_id=362 fragment=25/43
+t=14497.102ms keyframe_fragment_received frame_id=362 fragment=26/43
+t=14503.385ms keyframe_fragment_received frame_id=362 fragment=27/43
+t=14509.507ms keyframe_fragment_received frame_id=362 fragment=28/43
+t=14515.859ms keyframe_fragment_received frame_id=362 fragment=29/43
+t=14522.173ms keyframe_fragment_received frame_id=362 fragment=30/43
+t=14528.493ms keyframe_fragment_received frame_id=362 fragment=31/43
+t=14534.797ms keyframe_fragment_received frame_id=362 fragment=32/43
+t=14540.905ms keyframe_fragment_received frame_id=362 fragment=33/43
+t=14547.258ms keyframe_fragment_received frame_id=362 fragment=34/43
+t=14553.462ms keyframe_fragment_received frame_id=362 fragment=35/43
+t=14559.889ms keyframe_fragment_received frame_id=362 fragment=36/43
+t=14566.172ms keyframe_fragment_received frame_id=362 fragment=37/43
+t=14572.318ms keyframe_fragment_received frame_id=362 fragment=38/43
+t=14578.588ms keyframe_fragment_received frame_id=362 fragment=39/43
+t=14584.849ms keyframe_fragment_received frame_id=362 fragment=40/43
+t=14591.202ms keyframe_fragment_received frame_id=362 fragment=41/43
+t=14597.505ms keyframe_fragment_received frame_id=362 fragment=42/43
+t=14599.313ms keyframe_fragment_received frame_id=362 fragment=43/43
+t=14599.313ms keyframe_completed frame_id=362 fragments=43
+t=14599.313ms keyframe_delivered frame_id=362
+t=14771.979ms keyframe_fragment_received frame_id=368 fragment=1/43
+t=14778.170ms keyframe_fragment_received frame_id=368 fragment=2/43
+t=14784.496ms keyframe_fragment_received frame_id=368 fragment=4/43
+t=14790.819ms keyframe_fragment_received frame_id=368 fragment=5/43
+t=14797.050ms keyframe_fragment_received frame_id=368 fragment=6/43
+t=14803.292ms keyframe_fragment_received frame_id=368 fragment=7/43
+t=14809.615ms keyframe_fragment_received frame_id=368 fragment=8/43
+t=14815.922ms keyframe_fragment_received frame_id=368 fragment=9/43
+t=14822.049ms keyframe_fragment_received frame_id=368 fragment=10/43
+t=14828.420ms keyframe_fragment_received frame_id=368 fragment=11/43
+t=14834.705ms keyframe_fragment_received frame_id=368 fragment=12/43
+t=14840.928ms keyframe_fragment_received frame_id=368 fragment=13/43
+t=14847.300ms keyframe_fragment_received frame_id=368 fragment=14/43
+t=14853.489ms keyframe_fragment_received frame_id=368 fragment=15/43
+t=14859.772ms keyframe_fragment_received frame_id=368 fragment=16/43
+t=14866.078ms keyframe_fragment_received frame_id=368 fragment=17/43
+t=14872.391ms keyframe_fragment_received frame_id=368 fragment=18/43
+t=14878.592ms keyframe_fragment_received frame_id=368 fragment=19/43
+t=14884.941ms keyframe_fragment_received frame_id=368 fragment=20/43
+t=14891.114ms keyframe_fragment_received frame_id=368 fragment=21/43
+t=14897.446ms keyframe_fragment_received frame_id=368 fragment=22/43
+t=14903.673ms keyframe_fragment_received frame_id=368 fragment=23/43
+t=14909.899ms keyframe_fragment_received frame_id=368 fragment=24/43
+t=14916.159ms keyframe_fragment_received frame_id=368 fragment=25/43
+t=14922.436ms keyframe_fragment_received frame_id=368 fragment=26/43
+t=14928.707ms keyframe_fragment_received frame_id=368 fragment=27/43
+t=14935.134ms keyframe_fragment_received frame_id=368 fragment=28/43
+t=14941.352ms keyframe_fragment_received frame_id=368 fragment=29/43
+t=14947.562ms keyframe_fragment_received frame_id=368 fragment=30/43
+t=14953.904ms keyframe_fragment_received frame_id=368 fragment=31/43
+t=14960.161ms keyframe_fragment_received frame_id=368 fragment=32/43
+t=14966.490ms keyframe_fragment_received frame_id=368 fragment=33/43
+t=14972.811ms keyframe_fragment_received frame_id=368 fragment=34/43
+t=14978.925ms keyframe_fragment_received frame_id=368 fragment=35/43
+t=14985.238ms keyframe_fragment_received frame_id=368 fragment=36/43
+t=14991.572ms keyframe_fragment_received frame_id=368 fragment=37/43
+t=14997.831ms keyframe_fragment_received frame_id=368 fragment=38/43
+t=15004.067ms keyframe_fragment_received frame_id=368 fragment=39/43
+t=15010.305ms keyframe_fragment_received frame_id=368 fragment=40/43
+t=15016.627ms keyframe_fragment_received frame_id=368 fragment=41/43
+t=15022.917ms keyframe_fragment_received frame_id=368 fragment=42/43
+t=15024.777ms keyframe_fragment_received frame_id=368 fragment=43/43
+t=15058.075ms loss_declared triggering_frame_id=Some(369) incomplete=1 gap=0 evicted=0 inconsistent=0
+t=15058.075ms frame_not_delivered frame_id=Some(369) reason=waiting_for_keyframe count=1
+t=15058.075ms need_keyframe_set_after_loss
+t=15058.075ms need_keyframe=true request_emitted backoff_step=1 elapsed_since_prior_request_ms=0
+t=15078.075ms request_arrived_at_simulated_sender
+t=15091.335ms frame_not_delivered frame_id=Some(370) reason=waiting_for_keyframe count=1
+t=15099.849ms keyframe_sent frame_id=453 bytes=50000 fragments=43 KEY=1 CONFIG=1
+t=15124.663ms frame_not_delivered frame_id=Some(371) reason=waiting_for_keyframe count=1
+t=15157.805ms frame_not_delivered frame_id=Some(372) reason=waiting_for_keyframe count=1
+t=15191.048ms frame_not_delivered frame_id=Some(373) reason=waiting_for_keyframe count=1
+t=15224.366ms frame_not_delivered frame_id=Some(374) reason=waiting_for_keyframe count=1
+t=15257.695ms frame_not_delivered frame_id=Some(375) reason=waiting_for_keyframe count=1
+t=15258.181ms need_keyframe=true request_emitted backoff_step=2 elapsed_since_prior_request_ms=200
+t=15278.181ms request_arrived_at_simulated_sender
+t=15290.872ms frame_not_delivered frame_id=Some(376) reason=waiting_for_keyframe count=1
+t=15299.847ms keyframe_sent frame_id=459 bytes=50000 fragments=43 KEY=1 CONFIG=1
+t=15324.031ms frame_not_delivered frame_id=Some(377) reason=waiting_for_keyframe count=1
+t=15384.339ms loss_declared triggering_frame_id=Some(379) incomplete=1 gap=0 evicted=0 inconsistent=0
+t=15384.339ms frame_not_delivered frame_id=Some(379) reason=waiting_for_keyframe count=1
+t=15390.626ms keyframe_fragment_received frame_id=380 fragment=1/43
+t=15396.900ms keyframe_fragment_received frame_id=380 fragment=2/43
+t=15403.219ms keyframe_fragment_received frame_id=380 fragment=3/43
+t=15409.417ms keyframe_fragment_received frame_id=380 fragment=4/43
+t=15415.689ms keyframe_fragment_received frame_id=380 fragment=5/43
+t=15421.899ms keyframe_fragment_received frame_id=380 fragment=6/43
+t=15428.150ms keyframe_fragment_received frame_id=380 fragment=7/43
+t=15434.424ms keyframe_fragment_received frame_id=380 fragment=8/43
+t=15440.712ms keyframe_fragment_received frame_id=380 fragment=9/43
+t=15447.047ms keyframe_fragment_received frame_id=380 fragment=10/43
+t=15453.356ms keyframe_fragment_received frame_id=380 fragment=11/43
+t=15459.619ms keyframe_fragment_received frame_id=380 fragment=12/43
+t=15465.897ms keyframe_fragment_received frame_id=380 fragment=13/43
+t=15472.180ms keyframe_fragment_received frame_id=380 fragment=14/43
+t=15478.347ms keyframe_fragment_received frame_id=380 fragment=15/43
+t=15484.765ms keyframe_fragment_received frame_id=380 fragment=16/43
+t=15490.894ms keyframe_fragment_received frame_id=380 fragment=17/43
+t=15497.231ms keyframe_fragment_received frame_id=380 fragment=18/43
+t=15503.573ms keyframe_fragment_received frame_id=380 fragment=19/43
+t=15509.764ms keyframe_fragment_received frame_id=380 fragment=20/43
+t=15516.130ms keyframe_fragment_received frame_id=380 fragment=21/43
+t=15522.403ms keyframe_fragment_received frame_id=380 fragment=22/43
+t=15528.686ms keyframe_fragment_received frame_id=380 fragment=23/43
+t=15534.981ms keyframe_fragment_received frame_id=380 fragment=24/43
+t=15541.260ms keyframe_fragment_received frame_id=380 fragment=25/43
+t=15547.552ms keyframe_fragment_received frame_id=380 fragment=26/43
+t=15553.701ms keyframe_fragment_received frame_id=380 fragment=27/43
+t=15560.047ms keyframe_fragment_received frame_id=380 fragment=28/43
+t=15566.356ms keyframe_fragment_received frame_id=380 fragment=29/43
+t=15572.578ms keyframe_fragment_received frame_id=380 fragment=30/43
+t=15578.788ms keyframe_fragment_received frame_id=380 fragment=31/43
+t=15585.215ms keyframe_fragment_received frame_id=380 fragment=32/43
+t=15591.351ms keyframe_fragment_received frame_id=380 fragment=33/43
+t=15597.735ms keyframe_fragment_received frame_id=380 fragment=34/43
+t=15604.015ms keyframe_fragment_received frame_id=380 fragment=35/43
+t=15610.133ms keyframe_fragment_received frame_id=380 fragment=36/43
+t=15616.532ms keyframe_fragment_received frame_id=380 fragment=37/43
+t=15622.849ms keyframe_fragment_received frame_id=380 fragment=38/43
+t=15628.990ms keyframe_fragment_received frame_id=380 fragment=39/43
+t=15635.340ms keyframe_fragment_received frame_id=380 fragment=40/43
+t=15641.578ms keyframe_fragment_received frame_id=380 fragment=41/43
+t=15647.781ms keyframe_fragment_received frame_id=380 fragment=42/43
+t=15649.818ms keyframe_fragment_received frame_id=380 fragment=43/43
+t=15649.818ms keyframe_completed frame_id=380 fragments=43
+t=15649.818ms need_keyframe_cleared_after_keyframe_delivery
+t=15649.818ms keyframe_delivered frame_id=380
+t=16066.506ms fragment_lost loss_event=11 frame_id=482 fragment=1/6 KEY=0 CONFIG=0 cause=iid_or_burst_loss
+t=16074.505ms fragment_lost loss_event=12 frame_id=482 fragment=3/6 KEY=0 CONFIG=0 cause=iid_or_burst_loss
+t=18062.435ms keyframe_fragment_received frame_id=453 fragment=1/43
+t=18068.642ms keyframe_fragment_received frame_id=453 fragment=2/43
+t=18074.899ms keyframe_fragment_received frame_id=453 fragment=3/43
+t=18081.323ms keyframe_fragment_received frame_id=453 fragment=4/43
+t=18087.593ms keyframe_fragment_received frame_id=453 fragment=5/43
+t=18093.815ms keyframe_fragment_received frame_id=453 fragment=6/43
+t=18100.099ms keyframe_fragment_received frame_id=453 fragment=7/43
+t=18106.278ms keyframe_fragment_received frame_id=453 fragment=8/43
+t=18112.536ms keyframe_fragment_received frame_id=453 fragment=9/43
+t=18118.887ms keyframe_fragment_received frame_id=453 fragment=10/43
+t=18125.138ms keyframe_fragment_received frame_id=453 fragment=11/43
+t=18131.405ms keyframe_fragment_received frame_id=453 fragment=12/43
+t=18137.818ms keyframe_fragment_received frame_id=453 fragment=13/43
+t=18143.994ms keyframe_fragment_received frame_id=453 fragment=14/43
+t=18150.294ms keyframe_fragment_received frame_id=453 fragment=15/43
+t=18156.537ms keyframe_fragment_received frame_id=453 fragment=16/43
+t=18162.787ms keyframe_fragment_received frame_id=453 fragment=17/43
+t=18169.171ms keyframe_fragment_received frame_id=453 fragment=18/43
+t=18175.386ms keyframe_fragment_received frame_id=453 fragment=19/43
+t=18181.593ms keyframe_fragment_received frame_id=453 fragment=20/43
+t=18187.862ms keyframe_fragment_received frame_id=453 fragment=21/43
+t=18194.281ms keyframe_fragment_received frame_id=453 fragment=22/43
+t=18200.482ms keyframe_fragment_received frame_id=453 fragment=23/43
+t=18206.821ms keyframe_fragment_received frame_id=453 fragment=24/43
+t=18212.951ms keyframe_fragment_received frame_id=453 fragment=25/43
+t=18219.250ms keyframe_fragment_received frame_id=453 fragment=26/43
+t=18225.600ms keyframe_fragment_received frame_id=453 fragment=27/43
+t=18231.842ms keyframe_fragment_received frame_id=453 fragment=28/43
+t=18238.095ms keyframe_fragment_received frame_id=453 fragment=29/43
+t=18244.469ms keyframe_fragment_received frame_id=453 fragment=30/43
+t=18250.715ms keyframe_fragment_received frame_id=453 fragment=31/43
+t=18256.924ms keyframe_fragment_received frame_id=453 fragment=32/43
+t=18263.330ms keyframe_fragment_received frame_id=453 fragment=33/43
+t=18269.414ms keyframe_fragment_received frame_id=453 fragment=34/43
+t=18275.723ms keyframe_fragment_received frame_id=453 fragment=35/43
+t=18281.991ms keyframe_fragment_received frame_id=453 fragment=36/43
+t=18288.348ms keyframe_fragment_received frame_id=453 fragment=37/43
+t=18294.607ms keyframe_fragment_received frame_id=453 fragment=38/43
+t=18300.904ms keyframe_fragment_received frame_id=453 fragment=39/43
+t=18307.198ms keyframe_fragment_received frame_id=453 fragment=40/43
+t=18313.479ms keyframe_fragment_received frame_id=453 fragment=41/43
+t=18319.619ms keyframe_fragment_received frame_id=453 fragment=42/43
+t=18321.574ms keyframe_fragment_received frame_id=453 fragment=43/43
+t=18321.574ms keyframe_completed frame_id=453 fragments=43
+t=18321.574ms keyframe_delivered frame_id=453
+t=18494.124ms keyframe_fragment_received frame_id=459 fragment=1/43
+t=18500.442ms keyframe_fragment_received frame_id=459 fragment=2/43
+t=18506.820ms keyframe_fragment_received frame_id=459 fragment=3/43
+t=18513.090ms keyframe_fragment_received frame_id=459 fragment=4/43
+t=18519.307ms keyframe_fragment_received frame_id=459 fragment=5/43
+t=18525.459ms keyframe_fragment_received frame_id=459 fragment=6/43
+t=18531.873ms keyframe_fragment_received frame_id=459 fragment=7/43
+t=18538.101ms keyframe_fragment_received frame_id=459 fragment=8/43
+t=18544.320ms keyframe_fragment_received frame_id=459 fragment=9/43
+t=18550.668ms keyframe_fragment_received frame_id=459 fragment=10/43
+t=18556.983ms keyframe_fragment_received frame_id=459 fragment=11/43
+t=18563.134ms keyframe_fragment_received frame_id=459 fragment=12/43
+t=18569.460ms keyframe_fragment_received frame_id=459 fragment=13/43
+t=18575.748ms keyframe_fragment_received frame_id=459 fragment=14/43
+t=18581.995ms keyframe_fragment_received frame_id=459 fragment=15/43
+t=18588.368ms keyframe_fragment_received frame_id=459 fragment=16/43
+t=18594.494ms keyframe_fragment_received frame_id=459 fragment=17/43
+t=18600.772ms keyframe_fragment_received frame_id=459 fragment=18/43
+t=18607.110ms keyframe_fragment_received frame_id=459 fragment=19/43
+t=18613.462ms keyframe_fragment_received frame_id=459 fragment=20/43
+t=18619.592ms keyframe_fragment_received frame_id=459 fragment=21/43
+t=18625.936ms keyframe_fragment_received frame_id=459 fragment=22/43
+t=18632.272ms keyframe_fragment_received frame_id=459 fragment=23/43
+t=18638.521ms keyframe_fragment_received frame_id=459 fragment=24/43
+t=18644.768ms keyframe_fragment_received frame_id=459 fragment=25/43
+t=18650.969ms keyframe_fragment_received frame_id=459 fragment=26/43
+t=18657.380ms keyframe_fragment_received frame_id=459 fragment=27/43
+t=18663.698ms keyframe_fragment_received frame_id=459 fragment=28/43
+t=18669.873ms keyframe_fragment_received frame_id=459 fragment=29/43
+t=18676.065ms keyframe_fragment_received frame_id=459 fragment=30/43
+t=18682.381ms keyframe_fragment_received frame_id=459 fragment=31/43
+t=18688.703ms keyframe_fragment_received frame_id=459 fragment=32/43
+t=18694.923ms keyframe_fragment_received frame_id=459 fragment=33/43
+t=18701.235ms keyframe_fragment_received frame_id=459 fragment=34/43
+t=18707.590ms keyframe_fragment_received frame_id=459 fragment=35/43
+t=18713.729ms keyframe_fragment_received frame_id=459 fragment=36/43
+t=18720.006ms keyframe_fragment_received frame_id=459 fragment=37/43
+t=18726.301ms keyframe_fragment_received frame_id=459 fragment=38/43
+t=18732.699ms keyframe_fragment_received frame_id=459 fragment=39/43
+t=18738.833ms keyframe_fragment_received frame_id=459 fragment=40/43
+t=18745.109ms keyframe_fragment_received frame_id=459 fragment=41/43
+t=18751.527ms keyframe_fragment_received frame_id=459 fragment=42/43
+t=18753.328ms keyframe_fragment_received frame_id=459 fragment=43/43
+t=18753.328ms keyframe_completed frame_id=459 fragments=43
+t=18753.328ms keyframe_delivered frame_id=459
+t=19066.476ms fragment_lost loss_event=13 frame_id=572 fragment=1/6 KEY=0 CONFIG=0 cause=iid_or_burst_loss
+t=19538.792ms loss_declared triggering_frame_id=Some(483) incomplete=1 gap=0 evicted=0 inconsistent=0
+t=19538.792ms frame_not_delivered frame_id=Some(483) reason=waiting_for_keyframe count=1
+t=19538.792ms need_keyframe_set_after_loss
+t=19538.792ms need_keyframe=true request_emitted backoff_step=1 elapsed_since_prior_request_ms=0
+t=19558.792ms request_arrived_at_simulated_sender
+t=19572.030ms frame_not_delivered frame_id=Some(484) reason=waiting_for_keyframe count=1
+t=19599.804ms keyframe_sent frame_id=588 bytes=50000 fragments=43 KEY=1 CONFIG=1
+t=19605.329ms frame_not_delivered frame_id=Some(485) reason=waiting_for_keyframe count=1
+t=19605.518ms fragment_lost loss_event=14 frame_id=588 fragment=13/43 KEY=1 CONFIG=1 cause=iid_or_burst_loss
+t=19638.440ms frame_not_delivered frame_id=Some(486) reason=waiting_for_keyframe count=1
+t=19671.818ms frame_not_delivered frame_id=Some(487) reason=waiting_for_keyframe count=1
+t=19705.091ms frame_not_delivered frame_id=Some(488) reason=waiting_for_keyframe count=1
+t=19738.285ms frame_not_delivered frame_id=Some(489) reason=waiting_for_keyframe count=1
+t=19743.136ms need_keyframe=true request_emitted backoff_step=2 elapsed_since_prior_request_ms=204
+t=19763.136ms request_arrived_at_simulated_sender
+t=19771.425ms frame_not_delivered frame_id=Some(490) reason=waiting_for_keyframe count=1
+t=19799.802ms keyframe_sent frame_id=594 bytes=50000 fragments=43 KEY=1 CONFIG=1
+t=19804.692ms frame_not_delivered frame_id=Some(491) reason=waiting_for_keyframe count=1
+t=19815.039ms fragment_lost loss_event=15 frame_id=594 fragment=33/43 KEY=1 CONFIG=1 cause=iid_or_burst_loss
+t=19838.055ms frame_not_delivered frame_id=Some(492) reason=waiting_for_keyframe count=1
+t=19871.224ms frame_not_delivered frame_id=Some(493) reason=waiting_for_keyframe count=1
+t=19882.467ms fragment_lost loss_event=16 frame_id=596 fragment=5/6 KEY=0 CONFIG=0 cause=iid_or_burst_loss
+t=19904.550ms frame_not_delivered frame_id=Some(494) reason=waiting_for_keyframe count=1
+t=19937.737ms frame_not_delivered frame_id=Some(495) reason=waiting_for_keyframe count=1
+t=19971.092ms frame_not_delivered frame_id=Some(496) reason=waiting_for_keyframe count=1
+t=20004.319ms frame_not_delivered frame_id=Some(497) reason=waiting_for_keyframe count=1
+t=20037.493ms frame_not_delivered frame_id=Some(498) reason=waiting_for_keyframe count=1
+t=20070.668ms frame_not_delivered frame_id=Some(499) reason=waiting_for_keyframe count=1
+t=20104.038ms frame_not_delivered frame_id=Some(500) reason=waiting_for_keyframe count=1
+t=20137.138ms frame_not_delivered frame_id=Some(501) reason=waiting_for_keyframe count=1
+t=20143.436ms need_keyframe=true request_emitted backoff_step=3 elapsed_since_prior_request_ms=400
+t=20163.436ms request_arrived_at_simulated_sender
+t=20170.510ms frame_not_delivered frame_id=Some(502) reason=waiting_for_keyframe count=1
+t=20199.798ms keyframe_sent frame_id=606 bytes=50000 fragments=43 KEY=1 CONFIG=1
+t=20203.820ms frame_not_delivered frame_id=Some(503) reason=waiting_for_keyframe count=1
+t=20237.011ms frame_not_delivered frame_id=Some(504) reason=waiting_for_keyframe count=1
+t=20270.277ms frame_not_delivered frame_id=Some(505) reason=waiting_for_keyframe count=1
+t=20303.483ms frame_not_delivered frame_id=Some(506) reason=waiting_for_keyframe count=1
+t=20336.700ms frame_not_delivered frame_id=Some(507) reason=waiting_for_keyframe count=1
+t=20370.015ms frame_not_delivered frame_id=Some(508) reason=waiting_for_keyframe count=1
+t=20403.113ms frame_not_delivered frame_id=Some(509) reason=waiting_for_keyframe count=1
+t=20436.363ms frame_not_delivered frame_id=Some(510) reason=waiting_for_keyframe count=1
+t=20469.638ms frame_not_delivered frame_id=Some(511) reason=waiting_for_keyframe count=1
+t=20502.978ms frame_not_delivered frame_id=Some(512) reason=waiting_for_keyframe count=1
+t=20536.235ms frame_not_delivered frame_id=Some(513) reason=waiting_for_keyframe count=1
+t=20569.540ms frame_not_delivered frame_id=Some(514) reason=waiting_for_keyframe count=1
+t=20602.695ms frame_not_delivered frame_id=Some(515) reason=waiting_for_keyframe count=1
+t=20635.922ms frame_not_delivered frame_id=Some(516) reason=waiting_for_keyframe count=1
+t=20669.124ms frame_not_delivered frame_id=Some(517) reason=waiting_for_keyframe count=1
+t=20702.465ms frame_not_delivered frame_id=Some(518) reason=waiting_for_keyframe count=1
+t=20735.637ms frame_not_delivered frame_id=Some(519) reason=waiting_for_keyframe count=1
+t=20768.881ms frame_not_delivered frame_id=Some(520) reason=waiting_for_keyframe count=1
+t=20802.102ms frame_not_delivered frame_id=Some(521) reason=waiting_for_keyframe count=1
+t=20835.383ms frame_not_delivered frame_id=Some(522) reason=waiting_for_keyframe count=1
+t=20868.642ms frame_not_delivered frame_id=Some(523) reason=waiting_for_keyframe count=1
+t=20902.001ms frame_not_delivered frame_id=Some(524) reason=waiting_for_keyframe count=1
+t=20935.162ms frame_not_delivered frame_id=Some(525) reason=waiting_for_keyframe count=1
+t=20947.697ms need_keyframe=true request_emitted backoff_step=4 elapsed_since_prior_request_ms=804
+t=20967.697ms request_arrived_at_simulated_sender
+t=20968.327ms frame_not_delivered frame_id=Some(526) reason=waiting_for_keyframe count=1
+t=20999.790ms keyframe_sent frame_id=630 bytes=50000 fragments=43 KEY=1 CONFIG=1
+t=21001.747ms frame_not_delivered frame_id=Some(527) reason=waiting_for_keyframe count=1
+t=21034.801ms frame_not_delivered frame_id=Some(528) reason=waiting_for_keyframe count=1
+t=21053.122ms fragment_lost loss_event=17 frame_id=631 fragment=6/6 KEY=0 CONFIG=0 cause=iid_or_burst_loss
+t=21068.219ms frame_not_delivered frame_id=Some(529) reason=waiting_for_keyframe count=1
+t=21101.296ms frame_not_delivered frame_id=Some(530) reason=waiting_for_keyframe count=1
+t=21134.618ms frame_not_delivered frame_id=Some(531) reason=waiting_for_keyframe count=1
+t=21141.121ms fragment_lost loss_event=18 frame_id=634 fragment=3/6 KEY=0 CONFIG=0 cause=iid_or_burst_loss
+t=21145.121ms fragment_lost loss_event=19 frame_id=634 fragment=4/6 KEY=0 CONFIG=0 cause=iid_or_burst_loss
+t=21167.901ms frame_not_delivered frame_id=Some(532) reason=waiting_for_keyframe count=1
+t=21201.108ms frame_not_delivered frame_id=Some(533) reason=waiting_for_keyframe count=1
+t=21234.348ms frame_not_delivered frame_id=Some(534) reason=waiting_for_keyframe count=1
+t=21267.624ms frame_not_delivered frame_id=Some(535) reason=waiting_for_keyframe count=1
+t=21300.808ms frame_not_delivered frame_id=Some(536) reason=waiting_for_keyframe count=1
+t=21334.130ms frame_not_delivered frame_id=Some(537) reason=waiting_for_keyframe count=1
+t=21367.387ms frame_not_delivered frame_id=Some(538) reason=waiting_for_keyframe count=1
+t=21400.608ms frame_not_delivered frame_id=Some(539) reason=waiting_for_keyframe count=1
+t=21433.845ms frame_not_delivered frame_id=Some(540) reason=waiting_for_keyframe count=1
+t=21467.035ms frame_not_delivered frame_id=Some(541) reason=waiting_for_keyframe count=1
+t=21500.389ms frame_not_delivered frame_id=Some(542) reason=waiting_for_keyframe count=1
+t=21533.522ms frame_not_delivered frame_id=Some(543) reason=waiting_for_keyframe count=1
+t=21566.915ms frame_not_delivered frame_id=Some(544) reason=waiting_for_keyframe count=1
+t=21600.015ms frame_not_delivered frame_id=Some(545) reason=waiting_for_keyframe count=1
+t=21633.429ms frame_not_delivered frame_id=Some(546) reason=waiting_for_keyframe count=1
+t=21666.621ms frame_not_delivered frame_id=Some(547) reason=waiting_for_keyframe count=1
+t=21699.753ms frame_not_delivered frame_id=Some(548) reason=waiting_for_keyframe count=1
+t=21733.033ms frame_not_delivered frame_id=Some(549) reason=waiting_for_keyframe count=1
+t=21766.428ms frame_not_delivered frame_id=Some(550) reason=waiting_for_keyframe count=1
+t=21799.507ms frame_not_delivered frame_id=Some(551) reason=waiting_for_keyframe count=1
+t=21832.861ms frame_not_delivered frame_id=Some(552) reason=waiting_for_keyframe count=1
+t=21866.055ms frame_not_delivered frame_id=Some(553) reason=waiting_for_keyframe count=1
+t=21899.314ms frame_not_delivered frame_id=Some(554) reason=waiting_for_keyframe count=1
+t=21932.539ms frame_not_delivered frame_id=Some(555) reason=waiting_for_keyframe count=1
+t=21948.114ms need_keyframe=true request_emitted backoff_step=5 elapsed_since_prior_request_ms=1000
+t=21965.745ms frame_not_delivered frame_id=Some(556) reason=waiting_for_keyframe count=1
+t=21968.114ms request_arrived_at_simulated_sender
+t=21998.990ms frame_not_delivered frame_id=Some(557) reason=waiting_for_keyframe count=1
+t=21999.780ms keyframe_sent frame_id=660 bytes=50000 fragments=43 KEY=1 CONFIG=1
+t=22004.541ms fragment_lost loss_event=20 frame_id=660 fragment=11/43 KEY=1 CONFIG=1 cause=iid_or_burst_loss
+t=22032.276ms frame_not_delivered frame_id=Some(558) reason=waiting_for_keyframe count=1
+t=22065.583ms frame_not_delivered frame_id=Some(559) reason=waiting_for_keyframe count=1
+t=22098.704ms frame_not_delivered frame_id=Some(560) reason=waiting_for_keyframe count=1
+t=22132.137ms frame_not_delivered frame_id=Some(561) reason=waiting_for_keyframe count=1
+t=22165.309ms frame_not_delivered frame_id=Some(562) reason=waiting_for_keyframe count=1
+t=22198.459ms frame_not_delivered frame_id=Some(563) reason=waiting_for_keyframe count=1
+t=22231.734ms frame_not_delivered frame_id=Some(564) reason=waiting_for_keyframe count=1
+t=22265.076ms frame_not_delivered frame_id=Some(565) reason=waiting_for_keyframe count=1
+t=22298.302ms frame_not_delivered frame_id=Some(566) reason=waiting_for_keyframe count=1
+t=22331.626ms frame_not_delivered frame_id=Some(567) reason=waiting_for_keyframe count=1
+t=22364.678ms frame_not_delivered frame_id=Some(568) reason=waiting_for_keyframe count=1
+t=22397.998ms frame_not_delivered frame_id=Some(569) reason=waiting_for_keyframe count=1
+t=22431.363ms frame_not_delivered frame_id=Some(570) reason=waiting_for_keyframe count=1
+t=22464.556ms frame_not_delivered frame_id=Some(571) reason=waiting_for_keyframe count=1
+t=22524.688ms loss_declared triggering_frame_id=Some(573) incomplete=1 gap=0 evicted=0 inconsistent=0
+t=22524.688ms frame_not_delivered frame_id=Some(573) reason=waiting_for_keyframe count=1
+t=22557.954ms frame_not_delivered frame_id=Some(574) reason=waiting_for_keyframe count=1
+t=22591.260ms frame_not_delivered frame_id=Some(575) reason=waiting_for_keyframe count=1
+t=22624.483ms frame_not_delivered frame_id=Some(576) reason=waiting_for_keyframe count=1
+t=22657.716ms frame_not_delivered frame_id=Some(577) reason=waiting_for_keyframe count=1
+t=22690.909ms frame_not_delivered frame_id=Some(578) reason=waiting_for_keyframe count=1
+t=22724.230ms frame_not_delivered frame_id=Some(579) reason=waiting_for_keyframe count=1
+t=22757.564ms frame_not_delivered frame_id=Some(580) reason=waiting_for_keyframe count=1
+t=22790.810ms frame_not_delivered frame_id=Some(581) reason=waiting_for_keyframe count=1
+t=22824.052ms frame_not_delivered frame_id=Some(582) reason=waiting_for_keyframe count=1
+t=22857.238ms frame_not_delivered frame_id=Some(583) reason=waiting_for_keyframe count=1
+t=22890.543ms frame_not_delivered frame_id=Some(584) reason=waiting_for_keyframe count=1
+t=22923.612ms frame_not_delivered frame_id=Some(585) reason=waiting_for_keyframe count=1
+t=22948.813ms need_keyframe=true request_emitted backoff_step=6 elapsed_since_prior_request_ms=1000
+t=22956.975ms frame_not_delivered frame_id=Some(586) reason=waiting_for_keyframe count=1
+t=22968.813ms request_arrived_at_simulated_sender
+t=22990.172ms frame_not_delivered frame_id=Some(587) reason=waiting_for_keyframe count=1
+t=22996.548ms keyframe_fragment_received frame_id=588 fragment=1/43
+t=22999.770ms keyframe_sent frame_id=690 bytes=50000 fragments=43 KEY=1 CONFIG=1
+t=23002.728ms keyframe_fragment_received frame_id=588 fragment=2/43
+t=23009.039ms keyframe_fragment_received frame_id=588 fragment=3/43
+t=23015.369ms keyframe_fragment_received frame_id=588 fragment=4/43
+t=23021.586ms keyframe_fragment_received frame_id=588 fragment=5/43
+t=23027.907ms keyframe_fragment_received frame_id=588 fragment=6/43
+t=23034.089ms keyframe_fragment_received frame_id=588 fragment=7/43
+t=23040.310ms keyframe_fragment_received frame_id=588 fragment=8/43
+t=23046.586ms keyframe_fragment_received frame_id=588 fragment=9/43
+t=23052.992ms keyframe_fragment_received frame_id=588 fragment=10/43
+t=23059.121ms keyframe_fragment_received frame_id=588 fragment=11/43
+t=23065.421ms keyframe_fragment_received frame_id=588 fragment=12/43
+t=23071.866ms keyframe_fragment_received frame_id=588 fragment=14/43
+t=23078.028ms keyframe_fragment_received frame_id=588 fragment=15/43
+t=23084.252ms keyframe_fragment_received frame_id=588 fragment=16/43
+t=23090.656ms keyframe_fragment_received frame_id=588 fragment=17/43
+t=23096.836ms keyframe_fragment_received frame_id=588 fragment=18/43
+t=23103.157ms keyframe_fragment_received frame_id=588 fragment=19/43
+t=23109.351ms keyframe_fragment_received frame_id=588 fragment=20/43
+t=23115.784ms keyframe_fragment_received frame_id=588 fragment=21/43
+t=23121.993ms keyframe_fragment_received frame_id=588 fragment=22/43
+t=23129.260ms keyframe_fragment_received frame_id=588 fragment=23/43
+t=23134.424ms keyframe_fragment_received frame_id=588 fragment=24/43
+t=23140.802ms keyframe_fragment_received frame_id=588 fragment=25/43
+t=23147.089ms keyframe_fragment_received frame_id=588 fragment=26/43
+t=23153.260ms keyframe_fragment_received frame_id=588 fragment=27/43
+t=23159.536ms keyframe_fragment_received frame_id=588 fragment=28/43
+t=23165.839ms keyframe_fragment_received frame_id=588 fragment=29/43
+t=23172.121ms keyframe_fragment_received frame_id=588 fragment=30/43
+t=23178.430ms keyframe_fragment_received frame_id=588 fragment=31/43
+t=23184.676ms keyframe_fragment_received frame_id=588 fragment=32/43
+t=23190.911ms keyframe_fragment_received frame_id=588 fragment=33/43
+t=23197.345ms keyframe_fragment_received frame_id=588 fragment=34/43
+t=23203.589ms keyframe_fragment_received frame_id=588 fragment=35/43
+t=23209.901ms keyframe_fragment_received frame_id=588 fragment=36/43
+t=23216.086ms keyframe_fragment_received frame_id=588 fragment=37/43
+t=23222.329ms keyframe_fragment_received frame_id=588 fragment=38/43
+t=23228.562ms keyframe_fragment_received frame_id=588 fragment=39/43
+t=23234.947ms keyframe_fragment_received frame_id=588 fragment=40/43
+t=23241.206ms keyframe_fragment_received frame_id=588 fragment=41/43
+t=23247.554ms keyframe_fragment_received frame_id=588 fragment=42/43
+t=23249.469ms keyframe_fragment_received frame_id=588 fragment=43/43
+t=23282.606ms loss_declared triggering_frame_id=Some(589) incomplete=1 gap=0 evicted=0 inconsistent=0
+t=23282.606ms frame_not_delivered frame_id=Some(589) reason=waiting_for_keyframe count=1
+t=23315.942ms frame_not_delivered frame_id=Some(590) reason=waiting_for_keyframe count=1
+t=23349.260ms frame_not_delivered frame_id=Some(591) reason=waiting_for_keyframe count=1
+t=23382.434ms frame_not_delivered frame_id=Some(592) reason=waiting_for_keyframe count=1
+t=23415.601ms frame_not_delivered frame_id=Some(593) reason=waiting_for_keyframe count=1
+t=23421.949ms keyframe_fragment_received frame_id=594 fragment=1/43
+t=23428.126ms keyframe_fragment_received frame_id=594 fragment=2/43
+t=23434.531ms keyframe_fragment_received frame_id=594 fragment=3/43
+t=23440.743ms keyframe_fragment_received frame_id=594 fragment=4/43
+t=23447.065ms keyframe_fragment_received frame_id=594 fragment=5/43
+t=23453.257ms keyframe_fragment_received frame_id=594 fragment=6/43
+t=23459.662ms keyframe_fragment_received frame_id=594 fragment=7/43
+t=23465.807ms keyframe_fragment_received frame_id=594 fragment=8/43
+t=23472.059ms keyframe_fragment_received frame_id=594 fragment=9/43
+t=23478.337ms keyframe_fragment_received frame_id=594 fragment=10/43
+t=23484.623ms keyframe_fragment_received frame_id=594 fragment=11/43
+t=23490.935ms keyframe_fragment_received frame_id=594 fragment=12/43
+t=23497.213ms keyframe_fragment_received frame_id=594 fragment=13/43
+t=23503.498ms keyframe_fragment_received frame_id=594 fragment=14/43
+t=23509.828ms keyframe_fragment_received frame_id=594 fragment=15/43
+t=23516.157ms keyframe_fragment_received frame_id=594 fragment=16/43
+t=23522.424ms keyframe_fragment_received frame_id=594 fragment=17/43
+t=23528.591ms keyframe_fragment_received frame_id=594 fragment=18/43
+t=23534.810ms keyframe_fragment_received frame_id=594 fragment=19/43
+t=23541.074ms keyframe_fragment_received frame_id=594 fragment=20/43
+t=23547.423ms keyframe_fragment_received frame_id=594 fragment=21/43
+t=23553.807ms keyframe_fragment_received frame_id=594 fragment=22/43
+t=23559.991ms keyframe_fragment_received frame_id=594 fragment=23/43
+t=23566.334ms keyframe_fragment_received frame_id=594 fragment=24/43
+t=23572.555ms keyframe_fragment_received frame_id=594 fragment=25/43
+t=23578.750ms keyframe_fragment_received frame_id=594 fragment=26/43
+t=23585.112ms keyframe_fragment_received frame_id=594 fragment=27/43
+t=23591.447ms keyframe_fragment_received frame_id=594 fragment=28/43
+t=23597.636ms keyframe_fragment_received frame_id=594 fragment=29/43
+t=23603.971ms keyframe_fragment_received frame_id=594 fragment=30/43
+t=23610.221ms keyframe_fragment_received frame_id=594 fragment=31/43
+t=23616.528ms keyframe_fragment_received frame_id=594 fragment=32/43
+t=23622.730ms keyframe_fragment_received frame_id=594 fragment=34/43
+t=23628.984ms keyframe_fragment_received frame_id=594 fragment=35/43
+t=23635.191ms keyframe_fragment_received frame_id=594 fragment=36/43
+t=23641.498ms keyframe_fragment_received frame_id=594 fragment=37/43
+t=23647.801ms keyframe_fragment_received frame_id=594 fragment=38/43
+t=23654.073ms keyframe_fragment_received frame_id=594 fragment=39/43
+t=23660.321ms keyframe_fragment_received frame_id=594 fragment=40/43
+t=23666.624ms keyframe_fragment_received frame_id=594 fragment=41/43
+t=23673.017ms keyframe_fragment_received frame_id=594 fragment=42/43
+t=23674.861ms keyframe_fragment_received frame_id=594 fragment=43/43
+t=23708.232ms loss_declared triggering_frame_id=Some(595) incomplete=1 gap=0 evicted=0 inconsistent=0
+t=23708.232ms frame_not_delivered frame_id=Some(595) reason=waiting_for_keyframe count=1
+t=23768.421ms loss_declared triggering_frame_id=Some(597) incomplete=1 gap=0 evicted=0 inconsistent=0
+t=23768.421ms frame_not_delivered frame_id=Some(597) reason=waiting_for_keyframe count=1
+t=23801.569ms frame_not_delivered frame_id=Some(598) reason=waiting_for_keyframe count=1
+t=23834.927ms frame_not_delivered frame_id=Some(599) reason=waiting_for_keyframe count=1
+t=23868.067ms frame_not_delivered frame_id=Some(600) reason=waiting_for_keyframe count=1
+t=23901.280ms frame_not_delivered frame_id=Some(601) reason=waiting_for_keyframe count=1
+t=23934.621ms frame_not_delivered frame_id=Some(602) reason=waiting_for_keyframe count=1
+t=23953.094ms need_keyframe=true request_emitted backoff_step=7 elapsed_since_prior_request_ms=1004
+t=23967.800ms frame_not_delivered frame_id=Some(603) reason=waiting_for_keyframe count=1
+t=23973.094ms request_arrived_at_simulated_sender
+t=23999.760ms keyframe_sent frame_id=720 bytes=50000 fragments=43 KEY=1 CONFIG=1
+t=24001.018ms frame_not_delivered frame_id=Some(604) reason=waiting_for_keyframe count=1
+t=24034.258ms frame_not_delivered frame_id=Some(605) reason=waiting_for_keyframe count=1
+t=24040.587ms keyframe_fragment_received frame_id=606 fragment=1/43
+t=24046.869ms keyframe_fragment_received frame_id=606 fragment=2/43
+t=24053.073ms keyframe_fragment_received frame_id=606 fragment=3/43
+t=24059.420ms keyframe_fragment_received frame_id=606 fragment=4/43
+t=24065.617ms keyframe_fragment_received frame_id=606 fragment=5/43
+t=24072.051ms keyframe_fragment_received frame_id=606 fragment=6/43
+t=24078.270ms keyframe_fragment_received frame_id=606 fragment=7/43
+t=24084.615ms keyframe_fragment_received frame_id=606 fragment=8/43
+t=24090.784ms keyframe_fragment_received frame_id=606 fragment=9/43
+t=24097.157ms keyframe_fragment_received frame_id=606 fragment=10/43
+t=24103.429ms keyframe_fragment_received frame_id=606 fragment=11/43
+t=24109.603ms keyframe_fragment_received frame_id=606 fragment=12/43
+t=24115.815ms keyframe_fragment_received frame_id=606 fragment=13/43
+t=24122.146ms keyframe_fragment_received frame_id=606 fragment=14/43
+t=24128.430ms keyframe_fragment_received frame_id=606 fragment=15/43
+t=24134.684ms keyframe_fragment_received frame_id=606 fragment=16/43
+t=24140.960ms keyframe_fragment_received frame_id=606 fragment=16/43
+t=24147.232ms keyframe_fragment_received frame_id=606 fragment=17/43
+t=24153.466ms keyframe_fragment_received frame_id=606 fragment=18/43
+t=24159.830ms keyframe_fragment_received frame_id=606 fragment=19/43
+t=24166.180ms keyframe_fragment_received frame_id=606 fragment=20/43
+t=24172.309ms keyframe_fragment_received frame_id=606 fragment=21/43
+t=24178.724ms keyframe_fragment_received frame_id=606 fragment=22/43
+t=24184.933ms keyframe_fragment_received frame_id=606 fragment=23/43
+t=24191.310ms keyframe_fragment_received frame_id=606 fragment=24/43
+t=24197.472ms keyframe_fragment_received frame_id=606 fragment=25/43
+t=24203.719ms keyframe_fragment_received frame_id=606 fragment=26/43
+t=24209.972ms keyframe_fragment_received frame_id=606 fragment=27/43
+t=24216.257ms keyframe_fragment_received frame_id=606 fragment=28/43
+t=24222.685ms keyframe_fragment_received frame_id=606 fragment=29/43
+t=24228.762ms keyframe_fragment_received frame_id=606 fragment=30/43
+t=24235.135ms keyframe_fragment_received frame_id=606 fragment=31/43
+t=24241.496ms keyframe_fragment_received frame_id=606 fragment=32/43
+t=24247.674ms keyframe_fragment_received frame_id=606 fragment=33/43
+t=24253.986ms keyframe_fragment_received frame_id=606 fragment=34/43
+t=24260.259ms keyframe_fragment_received frame_id=606 fragment=35/43
+t=24266.476ms keyframe_fragment_received frame_id=606 fragment=36/43
+t=24272.856ms keyframe_fragment_received frame_id=606 fragment=37/43
+t=24279.026ms keyframe_fragment_received frame_id=606 fragment=38/43
+t=24285.299ms keyframe_fragment_received frame_id=606 fragment=39/43
+t=24291.559ms keyframe_fragment_received frame_id=606 fragment=40/43
+t=24297.977ms keyframe_fragment_received frame_id=606 fragment=41/43
+t=24304.233ms keyframe_fragment_received frame_id=606 fragment=42/43
+t=24306.209ms keyframe_fragment_received frame_id=606 fragment=43/43
+t=24306.209ms keyframe_completed frame_id=606 fragments=43
+t=24306.209ms need_keyframe_cleared_after_keyframe_delivery
+t=24306.209ms keyframe_delivered frame_id=606
+test soak::tests::trace_records_first_twenty_losses_through_keyframe_recovery ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out; finished in 1.31s
+
