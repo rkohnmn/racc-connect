@@ -20,7 +20,8 @@ Probe date: 2026-10-06 (America/New_York).
 | M1 Protocol | Complete | [VERIFIED-RUN] Protocol tests, documentation, cargo-deny, scripts, and compile-only target checks passed; see the M1 report. |
 | M2 Transport | Complete | [VERIFIED-RUN] M2 acceptance checks 1–13 passed on Windows 10.0.19045; see the final report below. Windows and Intel macOS target checks are COMPILE-ONLY. |
 | M2.5 Transport audit | Complete | [VERIFIED-RUN] All 14 M2.5 acceptance checks passed; the audit and final evidence are recorded below and were pushed to origin/main. No M3 work was started. |
-| M3a Topology, coordinate math, telemetry | Complete | [VERIFIED-RUN] All M3a checks pass; [COMPILE-ONLY] Windows and macOS cross-checks pass. The user authorized a normal push, and the commits were published as a fast-forward to origin/main. M3b remains not started. |
+| M3a Topology, coordinate math, telemetry | Complete | [VERIFIED-RUN] All M3a checks pass; [COMPILE-ONLY] Windows and macOS cross-checks pass. The user authorized a normal push, and the commits were published as a fast-forward to origin/main. |
+| M3b Host and viewer session lifecycle | Complete | [VERIFIED-RUN] 45 session tests and all standard workspace checks passed; Windows and macOS target checks passed [COMPILE-ONLY]. See the M3b report below. |
 | M4a UI toolkit spike | Not started | [UNVERIFIED] |
 | M4b UI shell | Not started | [UNVERIFIED] |
 | M5 Windows capture and encode | Not started | [UNVERIFIED] |
@@ -392,9 +393,33 @@ For three `1920x1080` displays at `(-1920,0)`, `(0,0)`, `(1920,0)`, virtual boun
 - **[VERIFIED-RUN]** Pure logic and generated tests ran on Windows 10.0.19045. They do not verify real monitor metadata or OS cursor injection.
 - **[COMPILE-ONLY]** Windows and Intel macOS workspace checks passed; platform behavior was not run.
 - **[HUMAN-PENDING]** Windows corner/center readback and DPI comparison, plus Mac built-in/external display checks, are listed in `HARDWARE.md`.
-- Updated M2.5 recommendation question 14 to hybrid NACK-all+FEC-20 after real-path measurements; it does not affect topology. If M7 selects it, telemetry may need bounded NACK/retransmit, parity recovery/bytes, and stale/recovery counters (question 21).
+- The M2.5 simulator hybrid NACK/FEC recommendation was later superseded by the fixed v0 scope recorded in questions 14 and 17. If M7 selects a separately authorized recovery mechanism, telemetry may need bounded retransmit, recovery, and stale-frame counters (question 21).
 - Added questions 19–23 for ADR numbering, missing StatsReport decoder field, M7 transport telemetry, the truncated supplied final instruction, and the rejected push review.
 
 ### M3b handoff
 
 M3b should implement viewer and host session lifecycle state machines using fake capture/encoder dependencies, topology diffs, serial topology revisions, and stream epochs. It should cover connect/handshake, monitor switching, pause/resume, reconnect and recovery transitions with stale-epoch handling. This is only the high-level scope already stated in `AGENTS.md`; the supplied M3a request was truncated during its final M3b paragraph. No M3b code was started.
+
+### 2026-10-06 — M3b host and viewer session lifecycle
+
+- [VERIFIED-RUN] Implemented deterministic host and viewer lifecycle controllers in `racc-session`. They exchange typed protocol, capture, encoder, renderer-disposition, and event actions; no sockets, capture API, decoder, or UI dependency was added.
+- [VERIFIED-RUN] Host transitions cover H.264 handshake validation, initial stream setup, monitor switching and topology updates, pause/resume, capture loss and retry, network-path quality signals, encoder rebuild with OpenH264 fallback and terminal failure events, Goodbye, and the owner-selected five-second control-disconnect timeout. Viewer transitions cover handshake/topology, switch request correlation, held-frame replacement on a matching keyframe, pause/resume across reconnect, packet-loss and decoder recovery, terminal encoder-failure events, bounded reconnect backoff, and close.
+- [VERIFIED-RUN] Encoder configuration and active StreamReset metadata use matching aspect-preserving output dimensions within 1920×1080. The helper raises sources to 480 pixels high where the bounds allow it; an extreme aspect ratio can remain below 480 to preserve aspect within the width cap. Actual bitrate and tier selection remain with the host quality controller.
+- [VERIFIED-RUN] Capture retries follow 50, 100, 200, 400, 800, then 1000 ms delays. Epoch and request checks discard stale completions, stale resets, and stale video frames. Textual wire protocol was unchanged; v0 loss recovery remains the existing rate-limited `RequestKeyframe` path without NACK or FEC.
+- [VERIFIED-RUN] `docs/SESSION.md` documents the host/viewer contract. The owner-selected disconnect timeout is recorded in `docs/OPEN_QUESTIONS.md`; the truncated M3a-to-M3b handoff is resolved using only the high-level M3 scope in `AGENTS.md`.
+
+#### M3b acceptance report
+
+1. **PASS** — `cargo fmt --all -- --check`; exit 0.
+2. **PASS** — `cargo clippy --workspace --all-targets -- -D warnings`; exit 0.
+3. **PASS** — `cargo test --workspace`; 154 passed, 0 failed, 1 ignored. Counts: `racc-session` 45, `racc-net` 32, `racc-proto` 20, `racc-telemetry` 14, `racc-testkit` 15, and `racc-topology` 28; remaining unit and doc-test harnesses had no failures.
+4. **PASS** — `cargo test -p racc-session`; 45 passed, 0 failed.
+5. **PASS** — `scripts/check-layering.ps1`; 13 library crates passed.
+6. **PASS — COMPILE-ONLY** — `cargo check --workspace --target x86_64-pc-windows-msvc` and `cargo check --workspace --target x86_64-apple-darwin`; both exited 0. These checks establish compilation only.
+7. **PASS** — `git diff --check`; exit 0.
+
+#### Verification limits
+
+- [TESTED-FAKE] State transitions were exercised using deterministic operation results and test fixtures; this does not verify a real capture backend or hardware encoder/decoder.
+- [COMPILE-ONLY] Windows and macOS target checks passed; neither establishes platform runtime behavior.
+- [HUMAN-PENDING] Hardware capture/encode, GPU recovery, real monitor hot-switch, service/session transitions, keyboard input, real Tailscale direct/DERP paths, and end-to-end stream latency remain on `docs/HARDWARE.md`.

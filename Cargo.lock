@@ -209,6 +209,10 @@ dependencies = [
 [[package]]
 name = "racc-session"
 version = "0.1.0"
+dependencies = [
+ "racc-proto",
+ "racc-topology",
+]
 
 [[package]]
 name = "racc-telemetry"

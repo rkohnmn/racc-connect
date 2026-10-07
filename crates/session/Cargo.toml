@@ -3,3 +3,7 @@ name = "racc-session"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
+
+[dependencies]
+racc-proto = { path = "../proto" }
+racc-topology = { path = "../topology" }
