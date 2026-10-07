@@ -23,7 +23,7 @@ Probe date: 2026-10-06 (America/New_York).
 | M3a Topology, coordinate math, telemetry | Complete | [VERIFIED-RUN] All M3a checks pass; [COMPILE-ONLY] Windows and macOS cross-checks pass. The user authorized a normal push, and the commits were published as a fast-forward to origin/main. |
 | M3b Host and viewer session lifecycle | Complete | [VERIFIED-RUN] 45 session tests and all standard workspace checks passed; Windows and macOS target checks passed [COMPILE-ONLY]. See the M3b report below. |
 | M4a UI toolkit spike | Complete | [VERIFIED-RUN] iced selected and compared against Slint; [HUMAN-VERIFIED] owner reports no visible stutter on PC #1. See ADR 0001. |
-| M4b UI shell | Implementation complete; owner visual review pending | [TESTED-FAKE] and [VERIFIED-RUN] checks pass; see the M4b report below. |
+| M4b UI shell | Best-judgment redesign implemented; owner visual review deferred | [TESTED-FAKE] app checks pass. The owner asked us to continue while screen review is unavailable; see `blocked.md`. |
 | M5 Windows capture and encode | Not started | [UNVERIFIED] |
 | M6 Windows host agent | Not started | [UNVERIFIED] |
 | M7 End-to-end viewer | Not started | [UNVERIFIED] |
@@ -466,4 +466,17 @@ M3b should implement viewer and host session lifecycle state machines using fake
 - [VERIFIED-RUN] Enabled iced's lazy widget and keyed the four shell regions independently. This caches child view subtrees when their visible dependencies do not change. Root `view`, layout, and full-window redraw still run; the documentation does not claim partial rendering.
 - [VERIFIED-RUN] After the Home Connect integration fix, the final `scripts/check-all.ps1` passed formatting, clippy, workspace tests (app 13; core 6; session 45; telemetry 14; testkit 28; topology 28; net 32 plus 1 ignored; proto 20), the 93.49-second testkit suite, 13-library layering, shipped-feature gate, and cargo-deny. Cargo-deny reported existing duplicate-version, `paste`, and `ttf-parser` warnings; advisories, bans, licenses, and sources passed.
 - [VERIFIED-RUN] Latest Release samples: open sidebar 1,683 cadence samples (33.23 ms median, 34.97 ms p95, 16 >40 ms), 0.065 CPU-s/s, 307.0/307.1 MiB private mean/peak; telemetry-collapsed 1,683 samples (33.28/34.70 ms, 15 >40 ms), 0.044 CPU-s/s, 304.0/304.9 MiB; fake idle 0.063 CPU-s/s and 305.5/305.7 MiB. Sampling windows and caveats are in `docs/UI.md`; these are source cadence/process proxies, not physical present or GPU measurements.
-- [HUMAN-PENDING] Owner visual review remains the M4b gate. Check the new header monitor selector and collapsed local-control rail as well as the existing checklist in `docs/HARDWARE.md`. No M5 work has started.
+- [HUMAN-PENDING] Owner visual review remains outstanding. The owner asked us to proceed on best judgment and defer screen review to `blocked.md`; this no longer halts coding.
+
+### 2026-10-07 — Prompt inventory and dependency audit
+
+- [VERIFIED-REVIEW] Confirmed the prompt files present: M3b, M4b, M5a, M5c, M6, M7, M8, M9, M10, and M11a. M3b is complete; M4b visual review remains pending, and the owner explicitly directed that coding continue without waiting for it.
+- [VERIFIED-REVIEW] Read-only audits found M5a, M5c, M6, M7, and M8 are not implemented beyond existing lower-level foundations. Their prompt-specific code, docs, tests, and human checklists remain outstanding as detailed in the prompts.
+- [VERIFIED-REVIEW] M6's M2.6 prerequisite is satisfied by the recorded v0 decision to keep incomplete-frame drops plus rate-limited keyframe requests and defer NACK/FEC (`docs/OPEN_QUESTIONS.md` items 14 and 17). M5b is not present in `prompts/` and is not implemented; derive its scope from AGENTS.md M5 (Windows H.264 hardware encode, OpenH264 fallback, `.h264` output) before M6.
+- [HUMAN-PENDING] The M4b prompt asks the owner to inspect the UI and interaction checklist in `docs/HARDWARE.md`; the owner cannot inspect screens now. Apply best judgment, keep the review in `blocked.md`, and continue subsequent prompts as explicitly requested.
+- [UNVERIFIED] M9, M10, and M11a remain unimplemented and have hardware, packaging, and ordering prerequisites. M9 asks to run on the Mac itself and requires its OS, Tailscale, Screen Recording, and Accessibility checks. M10 still has unfilled license and distribution choices in its prompt and must follow M8 and M9 human checks; M11a must follow M8 and M10.
+
+### 2026-10-07 — M4b review window
+
+- [VERIFIED-RUN] Started `cargo run -p racc-app -- --fake`; the process remains active and the terminal was queued in Codex so the owner can inspect the live window.
+- [HUMAN-PENDING] Owner visual and interaction review is still required. The agent-launched window is for review convenience and does not count as owner acceptance.

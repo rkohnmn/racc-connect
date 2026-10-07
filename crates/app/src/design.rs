@@ -14,6 +14,8 @@ pub mod tokens {
     pub const TELEMETRY_WIDTH: f32 = 280.0;
     /// Collapsed sidebar width in logical pixels.
     pub const COLLAPSED_SIDEBAR_WIDTH: f32 = 48.0;
+    /// Device tile width and height in the rail.
+    pub const DEVICE_TILE_SIZE: f32 = 48.0;
     /// Minimum useful workspace width in logical pixels.
     pub const MIN_WORKSPACE_WIDTH: f32 = 360.0;
     /// Minimum window width in logical pixels.
@@ -22,6 +24,8 @@ pub mod tokens {
     pub const MIN_WINDOW_HEIGHT: f32 = 640.0;
     /// Standard border width.
     pub const BORDER_WIDTH: f32 = 1.0;
+    /// Packet loss fraction that receives a warning color in the UI.
+    pub const LOSS_WARNING_FRACTION: f64 = 0.02;
     /// Focus ring width.
     pub const FOCUS_RING_WIDTH: f32 = 2.0;
     /// Standard spacing unit.
@@ -34,10 +38,16 @@ pub mod tokens {
     pub const SPACE_4: f32 = 16.0;
     /// Body text size.
     pub const BODY_SIZE: f32 = 14.0;
+    /// Compact metadata text size.
+    pub const META_SIZE: f32 = 12.0;
     /// Section label size.
     pub const SECTION_SIZE: f32 = 12.0;
     /// Header text size.
     pub const HEADER_SIZE: f32 = 20.0;
+    /// Large workspace title size.
+    pub const TITLE_SIZE: f32 = 22.0;
+    /// Metric value size.
+    pub const METRIC_SIZE: f32 = 20.0;
     /// Small corner radius.
     pub const RADIUS_SMALL: f32 = 6.0;
     /// Standard corner radius.
@@ -52,6 +62,12 @@ pub mod tokens {
     pub const MAIN: Color = Color::from_rgb(0.075, 0.085, 0.115);
     /// Raised card background.
     pub const CARD: Color = Color::from_rgb(0.14, 0.155, 0.19);
+    /// Slightly elevated surface for compact control groups.
+    pub const SURFACE: Color = Color::from_rgb(0.12, 0.13, 0.165);
+    /// Near-black video canvas that frames letterboxed content.
+    pub const VIDEO_FRAME: Color = Color::from_rgb(0.045, 0.052, 0.070);
+    /// Subtle accent wash for status chips and focus areas.
+    pub const ACCENT_WASH: Color = Color::from_rgb(0.15, 0.14, 0.24);
     /// Selected row background.
     pub const SELECTED: Color = Color::from_rgb(0.22, 0.20, 0.36);
     /// Primary text color.
@@ -64,6 +80,8 @@ pub mod tokens {
     pub const ONLINE: Color = Color::from_rgb(0.31, 0.78, 0.57);
     /// Error/disconnected state color.
     pub const OFFLINE: Color = Color::from_rgb(0.83, 0.38, 0.42);
+    /// Destructive-action color.
+    pub const DANGER: Color = Color::from_rgb(0.86, 0.30, 0.36);
     /// Subtle border color.
     pub const BORDER: Color = Color::from_rgb(0.22, 0.24, 0.29);
 }

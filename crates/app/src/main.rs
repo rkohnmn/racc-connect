@@ -391,16 +391,18 @@ impl App {
     }
 
     fn device_rail(&self) -> Element<'static, Message> {
-        let mut rail = column![
+        let home = tooltip(
             action_button(
-                "RC",
+                "⌂",
                 Some(Message::Action(UserAction::Home)),
-                self.model.page == Page::Home
+                self.model.page == Page::Home,
             ),
-            divider_label("DEVICES")
-        ]
-        .spacing(tokens::SPACE_2)
-        .align_x(iced::Alignment::Center);
+            text("Home"),
+            iced::widget::tooltip::Position::Right,
+        );
+        let mut rail = column![home, divider_label("DEVICES")]
+            .spacing(tokens::SPACE_2)
+            .align_x(iced::Alignment::Center);
         for device in &self.model.core.devices {
             let action = (device.online && device.host_capable)
                 .then(|| Message::Action(UserAction::SelectDevice(device.id.clone())));
@@ -411,15 +413,24 @@ impl App {
                 .unwrap_or('D')
                 .to_uppercase()
                 .to_string();
-            let status = if device.online { "●" } else { "○" };
             let status_color = if device.online {
                 tokens::ONLINE
             } else {
                 tokens::OFFLINE
             };
-            let badge = column![text(status).color(status_color), text(initial)]
+            let badge = container(
+                column![
+                    text(initial).size(tokens::HEADER_SIZE),
+                    text("●").size(tokens::META_SIZE).color(status_color),
+                ]
                 .spacing(tokens::SPACE_1)
-                .align_x(iced::Alignment::Center);
+                .align_x(iced::Alignment::Center),
+            )
+            .width(Fill)
+            .height(tokens::DEVICE_TILE_SIZE)
+            .center_x(Fill)
+            .center_y(Fill)
+            .style(panel_style(tokens::CARD));
             let selected = self.model.core.selected_device.as_ref() == Some(&device.id);
             let item = row![
                 text(if selected { "▏" } else { " " }).color(if selected {
@@ -427,7 +438,7 @@ impl App {
                 } else {
                     tokens::RAIL
                 }),
-                action_button_widget(badge, action, selected, format!("device:{:?}", device.id),),
+                action_button_widget(badge, action, selected, format!("device:{:?}", device.id)),
             ]
             .align_y(iced::Alignment::Center);
             rail = rail.push(tooltip(
@@ -439,18 +450,22 @@ impl App {
         rail = rail
             .push(tooltip(
                 action_button(
-                    "⌕",
+                    "＋",
                     Some(Message::Action(UserAction::DiscoverDevices)),
                     false,
                 ),
-                text("Discover fake devices"),
+                text("Discover devices"),
                 iced::widget::tooltip::Position::Right,
             ))
             .push(iced::widget::Space::new().height(Fill))
-            .push(action_button(
-                "Session",
-                Some(Message::Action(UserAction::Session)),
-                self.model.page == Page::Session,
+            .push(tooltip(
+                action_button(
+                    "◉",
+                    Some(Message::Action(UserAction::Session)),
+                    self.model.page == Page::Session,
+                ),
+                text("Session"),
+                iced::widget::tooltip::Position::Right,
             ));
         container(rail)
             .width(tokens::DEVICE_RAIL_WIDTH)
@@ -459,26 +474,29 @@ impl App {
             .style(panel_style(tokens::RAIL))
             .into()
     }
-
     fn device_sidebar(&self) -> iced::widget::Container<'static, Message> {
         if self.model.device_sidebar_collapsed {
             return container(
                 column![
-                    action_button(
-                        "»",
-                        Some(Message::Action(UserAction::ToggleDeviceSidebar)),
-                        false
+                    tooltip(
+                        action_button(
+                            "›",
+                            Some(Message::Action(UserAction::ToggleDeviceSidebar)),
+                            false,
+                        ),
+                        text("Expand devices"),
+                        iced::widget::tooltip::Position::Right,
                     ),
-                    compact_local_panel(&self.model)
+                    compact_local_panel(&self.model),
                 ]
-                .spacing(tokens::SPACE_1),
+                .spacing(tokens::SPACE_2),
             )
             .height(Fill)
-            .padding(tokens::SPACE_1)
+            .padding(tokens::SPACE_2)
             .style(panel_style(tokens::SIDEBAR));
         }
         let selected = self.selected_device();
-        let mut displays = column![section_label("STREAM")].spacing(tokens::SPACE_1);
+        let mut displays = column![section_label("DISPLAYS")].spacing(tokens::SPACE_2);
         if let Some(device) = selected {
             for display in &device.displays {
                 let is_selected = self.model.core.selected_display == Some(display.id);
@@ -487,17 +505,33 @@ impl App {
                 } else {
                     "Unavailable"
                 };
-                let title = format!(
-                    "{}  {}×{}",
-                    display.name, display.width_px, display.height_px
-                );
                 let info = format!(
-                    "{:.0} Hz  ·  {:.0}%  ·  {availability}",
+                    "{}×{}  ·  {:.0} Hz  ·  {:.0}%  ·  {availability}",
+                    display.width_px,
+                    display.height_px,
                     display.refresh_mhz as f32 / 1_000.0,
-                    100.0 * display.scale_milli as f32 / 1_000.0
+                    100.0 * display.scale_milli as f32 / 1_000.0,
                 );
-                let item = column![text(title).size(tokens::BODY_SIZE), muted_text(&info)]
-                    .spacing(tokens::SPACE_1);
+                let item = row![
+                    text(if is_selected { "●" } else { "▣" }).color(if is_selected {
+                        tokens::ACCENT
+                    } else {
+                        tokens::MUTED
+                    }),
+                    column![
+                        text(display.name.clone()).size(tokens::BODY_SIZE),
+                        text(info)
+                            .size(tokens::META_SIZE)
+                            .color(if display.available {
+                                tokens::MUTED
+                            } else {
+                                tokens::OFFLINE
+                            }),
+                    ]
+                    .spacing(tokens::SPACE_1),
+                ]
+                .spacing(tokens::SPACE_2)
+                .align_y(iced::Alignment::Center);
                 let action = display
                     .available
                     .then_some(Message::Action(UserAction::SelectDisplay(display.id)));
@@ -509,65 +543,103 @@ impl App {
                 ));
             }
         } else {
-            displays = displays.push(muted_text("Choose an online device from the rail"));
+            displays = displays.push(muted_text("Choose a device from the rail"));
         }
         let selected_name = selected.map_or_else(
             || "No device selected".to_owned(),
             |device| device.name.clone(),
         );
-        let header = row![
-            column![
-                text(selected_name).size(tokens::HEADER_SIZE),
-                muted_text(selected.map_or("Choose a device from the rail", |device| {
-                    if device.online {
-                        "Online  ·  remote display host"
-                    } else {
-                        "Offline  ·  unavailable"
-                    }
-                })),
+        let is_online = selected.is_some_and(|device| device.online);
+        let header = container(
+            row![
+                column![
+                    section_label("ACTIVE DEVICE"),
+                    text(selected_name).size(tokens::HEADER_SIZE),
+                    status_pill(
+                        if is_online { "ONLINE" } else { "OFFLINE" },
+                        if is_online {
+                            tokens::ONLINE
+                        } else {
+                            tokens::OFFLINE
+                        },
+                    ),
+                ]
+                .spacing(tokens::SPACE_1),
+                iced::widget::Space::new().width(Fill),
+                action_button(
+                    "‹",
+                    Some(Message::Action(UserAction::ToggleDeviceSidebar)),
+                    false,
+                ),
             ]
-            .spacing(tokens::SPACE_1),
-            iced::widget::Space::new().width(Fill),
-            action_button(
-                "‹",
-                Some(Message::Action(UserAction::ToggleDeviceSidebar)),
-                false
-            ),
-        ]
-        .align_y(iced::Alignment::Center);
+            .align_y(iced::Alignment::Center),
+        )
+        .padding(tokens::SPACE_2)
+        .style(panel_style(tokens::SURFACE));
+        let remote_control_enabled = self.model.keyboard_capture && self.model.mouse_capture;
         let controls = column![
             section_label("CONTROL"),
             action_button(
-                "Remote Desktop  ·  keyboard + mouse",
+                if remote_control_enabled {
+                    "Remote control  ·  enabled"
+                } else {
+                    "Remote control"
+                },
                 Some(Message::Action(UserAction::ToggleRemoteDesktop)),
-                self.model.keyboard_capture && self.model.mouse_capture
+                remote_control_enabled,
             ),
+            row![
+                status_pill(
+                    if self.model.keyboard_capture {
+                        "KEYS ON"
+                    } else {
+                        "KEYS OFF"
+                    },
+                    if self.model.keyboard_capture {
+                        tokens::ONLINE
+                    } else {
+                        tokens::MUTED
+                    },
+                ),
+                status_pill(
+                    if self.model.mouse_capture {
+                        "POINTER ON"
+                    } else {
+                        "POINTER OFF"
+                    },
+                    if self.model.mouse_capture {
+                        tokens::ONLINE
+                    } else {
+                        tokens::MUTED
+                    },
+                ),
+            ]
+            .spacing(tokens::SPACE_1),
             muted_text(&format!("Clipboard  ·  {}", self.model.clipboard_status)),
             section_label("SYSTEM"),
             action_button(
-                "Performance",
+                if self.model.telemetry_sidebar_collapsed {
+                    "Show live performance"
+                } else {
+                    "Hide live performance"
+                },
                 Some(Message::Action(UserAction::ToggleTelemetrySidebar)),
-                false
-            ),
-            action_button(
-                "Connection",
-                Some(Message::Action(UserAction::ToggleTelemetrySidebar)),
-                false
+                !self.model.telemetry_sidebar_collapsed,
             ),
             action_button(
                 "Settings",
                 Some(Message::Action(UserAction::Settings)),
-                self.model.page == Page::Settings
+                self.model.page == Page::Settings,
             ),
         ]
-        .spacing(tokens::SPACE_1);
+        .spacing(tokens::SPACE_2);
         container(
             column![
                 header,
                 scrollable(column![displays, controls].spacing(tokens::SPACE_4))
                     .height(Fill)
                     .style(scroll_style),
-                local_panel(&self.model)
+                local_panel(&self.model),
             ]
             .spacing(tokens::SPACE_3)
             .height(Fill),
@@ -576,7 +648,6 @@ impl App {
         .padding(tokens::SPACE_3)
         .style(panel_style(tokens::SIDEBAR))
     }
-
     fn selected_device(&self) -> Option<&racc_core::DeviceSnapshot> {
         let selected = self.model.core.selected_device.as_ref()?;
         self.model
@@ -604,12 +675,14 @@ impl App {
         });
         let title = match (device, display) {
             (Some(device), Some(display)) => format!("{}  /  {}", device.name, display.name),
-            (Some(device), None) => format!("{}  /  No display selected", device.name),
-            _ => "Session workspace".to_owned(),
+            (Some(device), None) => format!("{}  /  Choose a display", device.name),
+            _ => "Choose a remote device".to_owned(),
         };
         let subtitle = match (display, self.model.stream_dimensions) {
-            (Some(display), Some((_, height))) => format!(
-                "{:.0} Hz display  ·  streaming {height}p30  ·  H.264  ·  {} ms",
+            (Some(display), Some((width, height))) => format!(
+                "{}×{} stream  ·  {:.0} Hz source  ·  H.264  ·  {} ms RTT",
+                width,
+                height,
                 display.refresh_mhz as f32 / 1_000.0,
                 self.model
                     .core
@@ -620,53 +693,45 @@ impl App {
                     / 1_000
             ),
             (Some(display), None) => format!(
-                "{}×{} display  ·  waiting for stream",
+                "{}×{} source  ·  Waiting for stream",
                 display.width_px, display.height_px
             ),
-            _ => "Choose a display from the device sidebar".to_owned(),
+            _ => "Connect to a device to start a session".to_owned(),
         };
-        let header = column![
-            row![
-                column![text(title).size(tokens::HEADER_SIZE), muted_text(&subtitle)]
-                    .spacing(tokens::SPACE_1),
-                iced::widget::Space::new().width(Fill),
-                action_button(
-                    "Keyboard",
-                    Some(Message::Action(UserAction::SetKeyboardCapture(
-                        !self.model.keyboard_capture
-                    ))),
-                    self.model.keyboard_capture
-                ),
-                action_button(
-                    "Disconnect",
-                    Some(Message::Action(UserAction::Disconnect)),
-                    false
-                ),
-                action_button(
-                    "Fullscreen",
-                    Some(Message::ToggleFullscreen),
-                    self.fullscreen
-                ),
-                action_button(
-                    "Hide",
-                    Some(Message::Action(UserAction::SetVisible(false))),
-                    false
-                ),
+        let (status, status_color) = match &self.model.overlay {
+            SessionOverlay::Connecting => ("CONNECTING", tokens::ACCENT),
+            SessionOverlay::Switching => ("SWITCHING", tokens::ACCENT),
+            SessionOverlay::Paused => ("PAUSED", tokens::MUTED),
+            SessionOverlay::Reconnecting => ("RECONNECTING", tokens::OFFLINE),
+            SessionOverlay::WaitingForApproval { .. } => ("APPROVAL", tokens::ACCENT),
+            SessionOverlay::Error(_) => ("ATTENTION", tokens::OFFLINE),
+            SessionOverlay::None => ("LIVE", tokens::ONLINE),
+        };
+        let header = container(
+            column![
+                row![
+                    section_label("REMOTE SESSION"),
+                    status_pill(status, status_color),
+                ]
+                .spacing(tokens::SPACE_2)
+                .align_y(iced::Alignment::Center),
+                text(title).size(tokens::TITLE_SIZE),
+                muted_text(&subtitle),
             ]
-            .spacing(tokens::SPACE_1)
-            .align_y(iced::Alignment::Center),
-            self.monitor_selector(),
-            quality_controls(
-                self.model.core.selected_device.clone(),
-                self.model.session_quality,
-                false
-            ),
-        ]
-        .spacing(tokens::SPACE_2);
+            .spacing(tokens::SPACE_1),
+        )
+        .width(Fill)
+        .padding(tokens::SPACE_3)
+        .style(panel_style(tokens::SURFACE));
         let video: Element<'_, Message> = if self.fake_idle {
-            container(muted_text(
-                "Idle measurement mode  ·  no active video frames",
-            ))
+            container(
+                column![
+                    text("Stream paused for measurement").size(tokens::HEADER_SIZE),
+                    muted_text("No video frames are being generated in idle mode"),
+                ]
+                .spacing(tokens::SPACE_2)
+                .align_x(iced::Alignment::Center),
+            )
             .width(Fill)
             .height(Fill)
             .center_x(Fill)
@@ -684,97 +749,236 @@ impl App {
             iced::widget::stack([Element::from(video), overlay_widget(&self.model.overlay)])
                 .width(Fill)
                 .height(Fill);
-        container(
+        let video_frame = container(layered)
+            .width(Fill)
+            .height(Fill)
+            .padding(tokens::SPACE_2)
+            .style(panel_style(tokens::VIDEO_FRAME));
+
+        let controls = container(
             column![
-                header,
-                container(layered)
-                    .width(Fill)
-                    .height(Fill)
-                    .style(panel_style(tokens::MAIN))
+                scrollable(quality_controls(
+                    self.model.core.selected_device.clone(),
+                    self.model.session_quality,
+                    false,
+                ))
+                .width(Fill)
+                .height(iced::Length::Shrink)
+                .direction(scrollable::Direction::Horizontal(
+                    scrollable::Scrollbar::default(),
+                ))
+                .style(scroll_style),
+                row![
+                    action_button(
+                        if self.model.keyboard_capture {
+                            "⌨ Keys on"
+                        } else {
+                            "⌨ Keys"
+                        },
+                        Some(Message::Action(UserAction::SetKeyboardCapture(
+                            !self.model.keyboard_capture
+                        ))),
+                        self.model.keyboard_capture,
+                    ),
+                    action_button(
+                        if self.model.mouse_capture {
+                            "⌖ Pointer on"
+                        } else {
+                            "⌖ Pointer"
+                        },
+                        Some(Message::Action(UserAction::SetMouseCapture(
+                            !self.model.mouse_capture
+                        ))),
+                        self.model.mouse_capture,
+                    ),
+                    iced::widget::Space::new().width(Fill),
+                    action_button("⛶", Some(Message::ToggleFullscreen), self.fullscreen,),
+                    danger_button("Disconnect", Some(Message::Action(UserAction::Disconnect)),),
+                ]
+                .spacing(tokens::SPACE_2)
+                .align_y(iced::Alignment::Center),
             ]
-            .spacing(tokens::SPACE_3)
-            .height(Fill),
+            .spacing(tokens::SPACE_2),
+        )
+        .width(Fill)
+        .padding(tokens::SPACE_2)
+        .style(panel_style(tokens::SURFACE));
+
+        container(
+            column![header, self.monitor_selector(), video_frame, controls,]
+                .spacing(tokens::SPACE_3)
+                .height(Fill),
         )
         .height(Fill)
-        .padding(tokens::SPACE_4)
+        .padding(tokens::SPACE_3)
         .style(panel_style(tokens::MAIN))
     }
-
     fn monitor_selector(&self) -> Element<'static, Message> {
         let Some(device) = self.selected_device() else {
-            return row![section_label("MONITOR"), muted_text("No device selected")].into();
+            return container(row![
+                section_label("MONITORS"),
+                muted_text("Select a device to choose a display"),
+            ])
+            .padding(tokens::SPACE_2)
+            .style(panel_style(tokens::SURFACE))
+            .into();
         };
 
-        let mut monitors = row![section_label("MONITOR")]
-            .spacing(tokens::SPACE_1)
+        let mut monitors = row![section_label("MONITORS")]
+            .spacing(tokens::SPACE_2)
             .align_y(iced::Alignment::Center);
         for display in &device.displays {
             let selected = self.model.core.selected_display == Some(display.id);
-            let label = format!(
-                "{}  {}×{}",
-                display.name, display.width_px, display.height_px
-            );
+            let details = format!("{}×{}", display.width_px, display.height_px);
+            let item = row![
+                text(if display.available { "●" } else { "○" }).color(if display.available {
+                    tokens::ONLINE
+                } else {
+                    tokens::OFFLINE
+                }),
+                column![
+                    text(display.name.clone()).size(tokens::BODY_SIZE),
+                    text(details).size(tokens::META_SIZE).color(tokens::MUTED),
+                ]
+                .spacing(tokens::SPACE_1),
+            ]
+            .spacing(tokens::SPACE_2)
+            .align_y(iced::Alignment::Center);
             let action = display
                 .available
                 .then_some(Message::Action(UserAction::SelectDisplay(display.id)));
-            monitors = monitors.push(action_button(&label, action, selected));
+            monitors = monitors.push(action_button_widget(
+                item,
+                action,
+                selected,
+                format!("header-display:{:?}", display.id),
+            ));
         }
-        scrollable(monitors)
-            .width(Fill)
-            .height(iced::Length::Shrink)
-            .direction(scrollable::Direction::Horizontal(
-                scrollable::Scrollbar::default(),
-            ))
-            .style(scroll_style)
-            .into()
+        container(
+            scrollable(monitors)
+                .width(Fill)
+                .height(iced::Length::Shrink)
+                .direction(scrollable::Direction::Horizontal(
+                    scrollable::Scrollbar::default(),
+                ))
+                .style(scroll_style),
+        )
+        .padding(tokens::SPACE_1)
+        .style(panel_style(tokens::SURFACE))
+        .into()
     }
-
     fn home_page(&self) -> iced::widget::Container<'static, Message> {
-        let mut devices = column![
-            text("Home").size(tokens::HEADER_SIZE),
-            muted_text("Known devices running the Racc host agent")
-        ]
-        .spacing(tokens::SPACE_3);
-        for device in &self.model.core.devices {
-            let status = if device.online { "Online" } else { "Offline" };
-            let details = format!(
-                "{:?}  ·  {status}  ·  {} display(s)",
-                device.os,
-                device.displays.len()
+        let online_count = self
+            .model
+            .core
+            .devices
+            .iter()
+            .filter(|device| device.online && device.host_capable)
+            .count();
+        let header = container(
+            row![
+                column![
+                    section_label("DEVICE DIRECTORY"),
+                    text("Remote computers").size(tokens::TITLE_SIZE),
+                    muted_text("Select a host to open its live displays"),
+                ]
+                .spacing(tokens::SPACE_1),
+                iced::widget::Space::new().width(Fill),
+                status_pill(
+                    &format!("{online_count} ONLINE"),
+                    if online_count > 0 {
+                        tokens::ONLINE
+                    } else {
+                        tokens::OFFLINE
+                    },
+                ),
+                action_button(
+                    "＋ Discover",
+                    Some(Message::Action(UserAction::DiscoverDevices)),
+                    false,
+                ),
+            ]
+            .spacing(tokens::SPACE_2)
+            .align_y(iced::Alignment::Center),
+        )
+        .padding(tokens::SPACE_3)
+        .style(panel_style(tokens::SURFACE));
+        let mut devices = column![].spacing(tokens::SPACE_2);
+        if self.model.core.devices.is_empty() {
+            devices = devices.push(
+                container(
+                    column![
+                        text("No devices yet").size(tokens::HEADER_SIZE),
+                        muted_text("Discover computers running the host agent"),
+                    ]
+                    .spacing(tokens::SPACE_2),
+                )
+                .padding(tokens::SPACE_4)
+                .style(panel_style(tokens::CARD)),
             );
+        }
+        for device in &self.model.core.devices {
+            let can_connect = device.online && device.host_capable;
+            let selected = self.model.core.selected_device.as_ref() == Some(&device.id);
+            let display_count = device.displays.len();
+            let status = if can_connect {
+                "READY"
+            } else if device.online {
+                "AGENT NOT FOUND"
+            } else {
+                "OFFLINE"
+            };
+            let details = format!("{:?}  ·  {display_count} display(s)", device.os);
             let card = row![
                 column![
                     text(device.name.clone())
-                        .size(tokens::BODY_SIZE)
+                        .size(tokens::HEADER_SIZE)
                         .color(if device.online {
                             tokens::TEXT
                         } else {
                             tokens::MUTED
                         }),
-                    muted_text(&details)
+                    muted_text(&details),
+                    status_pill(
+                        status,
+                        if can_connect {
+                            tokens::ONLINE
+                        } else {
+                            tokens::OFFLINE
+                        },
+                    ),
                 ]
-                .spacing(tokens::SPACE_1),
+                .spacing(tokens::SPACE_2),
                 iced::widget::Space::new().width(Fill),
                 action_button(
-                    "Connect",
-                    (device.online && device.host_capable)
-                        .then(|| Message::Action(UserAction::Connect(device.id.clone()))),
-                    false
-                )
+                    if can_connect {
+                        "Open session"
+                    } else {
+                        "Unavailable"
+                    },
+                    can_connect.then(|| Message::Action(UserAction::Connect(device.id.clone()))),
+                    selected,
+                ),
             ]
+            .spacing(tokens::SPACE_3)
             .align_y(iced::Alignment::Center);
-            devices = devices.push(
-                container(card)
-                    .padding(tokens::SPACE_3)
-                    .style(panel_style(tokens::CARD)),
-            );
+            devices = devices.push(container(card).width(Fill).padding(tokens::SPACE_3).style(
+                panel_style(if selected {
+                    tokens::SELECTED
+                } else {
+                    tokens::CARD
+                }),
+            ));
         }
-        container(scrollable(devices).height(Fill).style(scroll_style))
-            .height(Fill)
-            .padding(tokens::SPACE_4)
-            .style(panel_style(tokens::MAIN))
+        container(
+            column![header, scrollable(devices).height(Fill).style(scroll_style)]
+                .spacing(tokens::SPACE_3)
+                .height(Fill),
+        )
+        .height(Fill)
+        .padding(tokens::SPACE_3)
+        .style(panel_style(tokens::MAIN))
     }
-
     fn settings_page(&self) -> iced::widget::Container<'static, Message> {
         let hosting = self.model.core.hosting_enabled;
         let mut allowlist = column![section_label("ALLOWLIST")].spacing(tokens::SPACE_2);
@@ -850,10 +1054,14 @@ impl App {
 
     fn telemetry_sidebar(&self) -> iced::widget::Container<'static, Message> {
         if self.model.telemetry_sidebar_collapsed {
-            return container(action_button(
-                "‹",
-                Some(Message::Action(UserAction::ToggleTelemetrySidebar)),
-                false,
+            return container(tooltip(
+                action_button(
+                    "‹",
+                    Some(Message::Action(UserAction::ToggleTelemetrySidebar)),
+                    false,
+                ),
+                text("Expand live telemetry"),
+                iced::widget::tooltip::Position::Left,
             ))
             .height(Fill)
             .padding(tokens::SPACE_2)
@@ -865,19 +1073,29 @@ impl App {
             .last_rtt_us
             .map_or_else(|| "—".to_owned(), |us| format!("{} ms", us / 1_000));
         let loss = format!("{:.2}%", session.loss_fraction * 100.0);
-        let bitrate = format!("{:.1} Mbps", session.bitrate_bps as f64 / 1_000_000.0);
-        let mut events = column![row![
-            section_label("EVENTS"),
-            iced::widget::Space::new().width(Fill),
-            action_button(
-                "Collapse",
-                Some(Message::Action(UserAction::ToggleTelemetrySidebar)),
-                false
-            )
-        ],]
-        .spacing(tokens::SPACE_1);
+        let bitrate = format!("{:.1}", session.bitrate_bps as f64 / 1_000_000.0);
+        let loss_color = if session.loss_fraction > tokens::LOSS_WARNING_FRACTION {
+            tokens::OFFLINE
+        } else {
+            tokens::ONLINE
+        };
+        let state_label = format!("{:?}", session.connection_state);
+        let state_color = if state_label.to_ascii_lowercase().contains("connected") {
+            tokens::ONLINE
+        } else {
+            tokens::MUTED
+        };
+        let mut events = column![].spacing(tokens::SPACE_2);
         if let Some(notification) = &self.model.notification {
-            events = events.push(muted_text(notification));
+            events = events.push(
+                container(
+                    text(notification.clone())
+                        .size(tokens::META_SIZE)
+                        .color(tokens::OFFLINE),
+                )
+                .padding(tokens::SPACE_2)
+                .style(panel_style(tokens::ACCENT_WASH)),
+            );
         }
         for event in self
             .model
@@ -889,31 +1107,69 @@ impl App {
             .rev()
             .take(8)
         {
-            events = events.push(muted_text(&format!(
-                "{:?}  ·  {}",
-                event.kind, event.detail
-            )));
+            let detail = row![
+                text("•").color(tokens::ACCENT),
+                column![
+                    text(format!("{:?}", event.kind)).size(tokens::META_SIZE),
+                    muted_text(&event.detail),
+                ]
+                .spacing(tokens::SPACE_1),
+            ]
+            .spacing(tokens::SPACE_2)
+            .align_y(iced::Alignment::Start);
+            events = events.push(
+                container(detail)
+                    .width(Fill)
+                    .padding(tokens::SPACE_2)
+                    .style(panel_style(tokens::CARD)),
+            );
+        }
+        if self.model.core.telemetry.events.events().is_empty() {
+            events = events.push(muted_text("No recent session events"));
         }
         container(
             column![
-                section_label("SESSION"),
-                telemetry_line("State", format!("{:?}", session.connection_state)),
-                telemetry_line("Path", format!("{:?}", session.path)),
-                telemetry_line("RTT", rtt),
-                telemetry_line("Packet loss", loss),
-                telemetry_line("Bitrate", bitrate),
-                telemetry_line("FPS", format!("{:.1}", session.fps)),
-                telemetry_line("Codec", format!("{:?}", session.codec)),
-                telemetry_line("Decoder", format!("{:?}", session.decoder)),
+                row![
+                    section_label("LIVE TELEMETRY"),
+                    iced::widget::Space::new().width(Fill),
+                    action_button(
+                        "›",
+                        Some(Message::Action(UserAction::ToggleTelemetrySidebar)),
+                        false,
+                    ),
+                ]
+                .align_y(iced::Alignment::Center),
+                status_pill(&state_label.to_uppercase(), state_color),
+                row![
+                    metric_card("RTT", rtt, tokens::TEXT),
+                    metric_card("LOSS", loss, loss_color),
+                ]
+                .spacing(tokens::SPACE_2),
+                row![
+                    metric_card("BITRATE · Mbps", bitrate, tokens::ACCENT),
+                    metric_card("FPS", format!("{:.0}", session.fps), tokens::TEXT),
+                ]
+                .spacing(tokens::SPACE_2),
                 section_label("HOST"),
-                telemetry_line("CPU", format!("{:.1}%", host.cpu_pct_x10 as f32 / 10.0)),
-                telemetry_line("Capture", format!("{:?}", host.capture_backend)),
-                telemetry_line("Encoder", format!("{:?}", host.encoder)),
-                telemetry_line("Resolution", format!("{}×{}", host.width, host.height)),
-                telemetry_line(
-                    "Refresh",
-                    format!("{:.0} Hz", host.refresh_mhz as f32 / 1_000.0)
-                ),
+                container(
+                    column![
+                        telemetry_line("CPU", format!("{:.1}%", host.cpu_pct_x10 as f32 / 10.0)),
+                        telemetry_line("Capture", format!("{:?}", host.capture_backend)),
+                        telemetry_line("Encoder", format!("{:?}", host.encoder)),
+                        telemetry_line("Resolution", format!("{}×{}", host.width, host.height)),
+                        telemetry_line(
+                            "Refresh",
+                            format!("{:.0} Hz", host.refresh_mhz as f32 / 1_000.0)
+                        ),
+                        telemetry_line("Codec", format!("{:?}", session.codec)),
+                        telemetry_line("Decoder", format!("{:?}", session.decoder)),
+                        telemetry_line("Path", format!("{:?}", session.path)),
+                    ]
+                    .spacing(tokens::SPACE_2),
+                )
+                .padding(tokens::SPACE_2)
+                .style(panel_style(tokens::SURFACE)),
+                section_label("EVENTS"),
                 scrollable(events).height(Fill).style(scroll_style),
             ]
             .spacing(tokens::SPACE_2)
@@ -923,7 +1179,6 @@ impl App {
         .padding(tokens::SPACE_3)
         .style(panel_style(tokens::SIDEBAR))
     }
-
     fn print_measurement(&self) {
         let mut samples = self.frame_intervals_ms.clone();
         samples.sort_by(f64::total_cmp);
@@ -939,49 +1194,75 @@ impl App {
 }
 
 fn local_panel(model: &ViewModel) -> Element<'static, Message> {
+    let hosting = model.core.hosting_enabled;
     container(
         column![
-            section_label("LOCAL SESSION"),
+            row![
+                section_label("THIS DEVICE"),
+                iced::widget::Space::new().width(Fill),
+                status_pill(
+                    if hosting { "HOSTING" } else { "VIEWER" },
+                    if hosting {
+                        tokens::ONLINE
+                    } else {
+                        tokens::ACCENT
+                    },
+                ),
+            ]
+            .align_y(iced::Alignment::Center),
             text(model.core.local_device_name.clone()).size(tokens::BODY_SIZE),
-            muted_text(if model.core.hosting_enabled {
-                "Hosting  ·  on"
-            } else {
-                "Viewer  ·  connected"
-            }),
             row![
                 action_button(
-                    "Keyboard",
+                    if model.keyboard_capture {
+                        "⌨ Keys on"
+                    } else {
+                        "⌨ Keys"
+                    },
                     Some(Message::Action(UserAction::SetKeyboardCapture(
                         !model.keyboard_capture
                     ))),
-                    model.keyboard_capture
+                    model.keyboard_capture,
                 ),
                 action_button(
-                    "Mouse",
+                    if model.mouse_capture {
+                        "⌖ Pointer on"
+                    } else {
+                        "⌖ Pointer"
+                    },
                     Some(Message::Action(UserAction::SetMouseCapture(
                         !model.mouse_capture
                     ))),
-                    model.mouse_capture
+                    model.mouse_capture,
                 ),
             ]
             .spacing(tokens::SPACE_1),
-            tooltip(
-                button(muted_text("Audio  ·  not supported"))
-                    .padding(tokens::SPACE_2)
-                    .style(|_theme: &Theme, _status| button::Style {
-                        text_color: tokens::MUTED,
-                        ..Default::default()
-                    }),
-                text("not supported"),
-                iced::widget::tooltip::Position::Top,
-            ),
-            action_button(
-                "Settings",
-                Some(Message::Action(UserAction::Settings)),
-                false
-            ),
+            row![
+                tooltip(
+                    button(text("Audio  ·  not supported").size(tokens::META_SIZE))
+                        .padding(tokens::SPACE_1)
+                        .style(|_theme: &Theme, _status| button::Style {
+                            background: Some(Background::Color(tokens::SURFACE)),
+                            text_color: tokens::MUTED,
+                            border: Border {
+                                color: tokens::BORDER,
+                                width: tokens::BORDER_WIDTH,
+                                radius: tokens::RADIUS_SMALL.into(),
+                            },
+                            ..Default::default()
+                        }),
+                    text("Audio is not supported"),
+                    iced::widget::tooltip::Position::Top,
+                ),
+                iced::widget::Space::new().width(Fill),
+                action_button(
+                    "Settings",
+                    Some(Message::Action(UserAction::Settings)),
+                    model.page == Page::Settings,
+                ),
+            ]
+            .align_y(iced::Alignment::Center),
         ]
-        .spacing(tokens::SPACE_1),
+        .spacing(tokens::SPACE_2),
     )
     .padding(tokens::SPACE_2)
     .style(panel_style(tokens::CARD))
@@ -996,24 +1277,24 @@ fn compact_local_panel(model: &ViewModel) -> Element<'static, Message> {
     };
     let local_label = format!("{} · {status}", model.core.local_device_name);
     let audio = tooltip(
-        button(text("A"))
+        button(text("♪"))
             .padding(tokens::SPACE_1)
             .style(|_theme: &Theme, _status| button::Style {
                 text_color: tokens::MUTED,
                 ..Default::default()
             }),
-        text("not supported"),
+        text("Audio is not supported"),
         iced::widget::tooltip::Position::Right,
     );
     column![
         tooltip(
-            action_button("L", None, false),
+            action_button("▣", None, false),
             text(local_label),
             iced::widget::tooltip::Position::Right,
         ),
         tooltip(
             action_button(
-                "K",
+                "⌨",
                 Some(Message::Action(UserAction::SetKeyboardCapture(
                     !model.keyboard_capture,
                 ))),
@@ -1024,19 +1305,19 @@ fn compact_local_panel(model: &ViewModel) -> Element<'static, Message> {
         ),
         tooltip(
             action_button(
-                "M",
+                "⌖",
                 Some(Message::Action(UserAction::SetMouseCapture(
                     !model.mouse_capture,
                 ))),
                 model.mouse_capture,
             ),
-            text("Mouse capture"),
+            text("Pointer capture"),
             iced::widget::tooltip::Position::Right,
         ),
         audio,
         tooltip(
             action_button(
-                "S",
+                "⚙",
                 Some(Message::Action(UserAction::Settings)),
                 model.page == Page::Settings,
             ),
@@ -1047,7 +1328,6 @@ fn compact_local_panel(model: &ViewModel) -> Element<'static, Message> {
     .spacing(tokens::SPACE_1)
     .into()
 }
-
 fn quality_controls(
     device_id: Option<DeviceId>,
     selected_quality: QualityPreset,
@@ -1100,16 +1380,46 @@ fn overlay_widget(overlay: &SessionOverlay) -> Element<'static, Message> {
         .into()
 }
 
+fn status_pill(label: &str, color: Color) -> Element<'static, Message> {
+    container(
+        row![
+            text("●").size(tokens::META_SIZE).color(color),
+            text(label.to_owned())
+                .size(tokens::META_SIZE)
+                .color(tokens::TEXT),
+        ]
+        .spacing(tokens::SPACE_1)
+        .align_y(iced::Alignment::Center),
+    )
+    .padding(tokens::SPACE_1)
+    .style(panel_style(tokens::ACCENT_WASH))
+    .into()
+}
+
+fn metric_card(label: &str, value: String, color: Color) -> Element<'static, Message> {
+    container(
+        column![
+            muted_text(label),
+            text(value).size(tokens::METRIC_SIZE).color(color),
+        ]
+        .spacing(tokens::SPACE_1),
+    )
+    .width(Fill)
+    .padding(tokens::SPACE_2)
+    .style(panel_style(tokens::CARD))
+    .into()
+}
+
 fn telemetry_line(label: &str, value: String) -> Element<'static, Message> {
     row![
         muted_text(label),
         iced::widget::Space::new().width(Fill),
-        text(value).size(tokens::BODY_SIZE)
+        text(value).size(tokens::META_SIZE)
     ]
+    .spacing(tokens::SPACE_2)
     .align_y(iced::Alignment::Center)
     .into()
 }
-
 fn divider_label(label: &str) -> Element<'static, Message> {
     text(label.to_owned())
         .size(tokens::SECTION_SIZE)
@@ -1155,11 +1465,16 @@ fn action_button_widget<'a>(
         button(content)
             .padding(tokens::SPACE_2)
             .style(move |_theme: &Theme, status| {
-                let background = match status {
-                    button::Status::Hovered => tokens::CARD,
-                    button::Status::Pressed => tokens::ACCENT,
-                    _ if selected => tokens::SELECTED,
-                    _ => Color::TRANSPARENT,
+                let (background, border_color, border_width) = match status {
+                    button::Status::Hovered => (tokens::CARD, tokens::BORDER, tokens::BORDER_WIDTH),
+                    button::Status::Pressed => {
+                        (tokens::ACCENT, tokens::ACCENT, tokens::BORDER_WIDTH)
+                    }
+                    button::Status::Disabled if selected => {
+                        (tokens::SELECTED, tokens::ACCENT, tokens::BORDER_WIDTH)
+                    }
+                    _ if selected => (tokens::SELECTED, tokens::ACCENT, tokens::BORDER_WIDTH),
+                    _ => (Color::TRANSPARENT, Color::TRANSPARENT, 0.0),
                 };
                 button::Style {
                     background: Some(Background::Color(background)),
@@ -1169,8 +1484,8 @@ fn action_button_widget<'a>(
                         tokens::TEXT
                     },
                     border: Border {
-                        color: tokens::BORDER,
-                        width: tokens::BORDER_WIDTH,
+                        color: border_color,
+                        width: border_width,
                         radius: if selected {
                             tokens::RADIUS_MEDIUM
                         } else {
@@ -1188,6 +1503,33 @@ fn action_button_widget<'a>(
     .into()
 }
 
+fn danger_button(label: &str, action: Option<Message>) -> Element<'static, Message> {
+    let action_for_focus = action.clone();
+    FocusableButton::wrap(
+        button(text(label.to_owned()))
+            .padding(tokens::SPACE_2)
+            .style(|_theme: &Theme, status| {
+                let background = match status {
+                    button::Status::Hovered | button::Status::Pressed => tokens::DANGER,
+                    _ => tokens::ACCENT_WASH,
+                };
+                button::Style {
+                    background: Some(Background::Color(background)),
+                    text_color: tokens::TEXT,
+                    border: Border {
+                        color: tokens::DANGER,
+                        width: tokens::BORDER_WIDTH,
+                        radius: tokens::RADIUS_MEDIUM.into(),
+                    },
+                    ..Default::default()
+                }
+            })
+            .on_press_maybe(action),
+        action_for_focus,
+        iced::advanced::widget::Id::from(format!("danger:{label}")),
+    )
+    .into()
+}
 fn scroll_style(theme: &Theme, status: scrollable::Status) -> scrollable::Style {
     let mut style = scrollable::default(theme, status);
     for rail in [&mut style.vertical_rail, &mut style.horizontal_rail] {

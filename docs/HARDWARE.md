@@ -71,6 +71,9 @@ Specifications below were supplied by the owner on 2026-10-06 and have not been 
 
 ## M4b — Fake UI visual review
 
+The owner reports that the current UI is weak and cannot inspect screens now. The app is being improved from the supplied structural reference and AGENTS.md style tokens; this review is recorded in `blocked.md` and does not halt coding per the owner's instruction.
+
+
 - [ ] [HUMAN-PENDING] Launch cargo run -p racc-app -- --fake; confirm the four regions, fake devices/displays, synthetic stream, and telemetry/events are visible. Check the new header monitor selector and the compact local controls when the device sidebar is collapsed.
 - [ ] [HUMAN-PENDING] Review the dark palette, spacing, text sizes, and selected/hover/pressed states against AGENTS.md section 5.2; report concrete changes desired.
 - [ ] [HUMAN-PENDING] Collapse and expand both sidebars; resize the window and drag it between displays. Check that the workspace remains usable and the video stays letterboxed.
