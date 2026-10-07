@@ -4,6 +4,16 @@ version.workspace = true
 edition.workspace = true
 publish.workspace = true
 
+[features]
+default = ["fake-core"]
+fake-core = ["dep:racc-core", "dep:racc-telemetry", "dep:racc-topology"]
+
 [dependencies]
-racc-net = { path = "../net", features = ["test-bind"] }
+racc-core = { path = "../core", optional = true }
+racc-net = { path = "../net" }
 racc-proto = { path = "../proto" }
+racc-telemetry = { path = "../telemetry", optional = true }
+racc-topology = { path = "../topology", optional = true }
+
+[dev-dependencies]
+racc-net = { path = "../net", features = ["test-bind"] }

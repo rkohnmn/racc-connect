@@ -23,7 +23,7 @@ Probe date: 2026-10-06 (America/New_York).
 | M3a Topology, coordinate math, telemetry | Complete | [VERIFIED-RUN] All M3a checks pass; [COMPILE-ONLY] Windows and macOS cross-checks pass. The user authorized a normal push, and the commits were published as a fast-forward to origin/main. |
 | M3b Host and viewer session lifecycle | Complete | [VERIFIED-RUN] 45 session tests and all standard workspace checks passed; Windows and macOS target checks passed [COMPILE-ONLY]. See the M3b report below. |
 | M4a UI toolkit spike | Complete | [VERIFIED-RUN] iced selected and compared against Slint; [HUMAN-VERIFIED] owner reports no visible stutter on PC #1. See ADR 0001. |
-| M4b UI shell | Not started | [UNVERIFIED] |
+| M4b UI shell | Implementation complete; owner visual review pending | [TESTED-FAKE] and [VERIFIED-RUN] checks pass; see the M4b report below. |
 | M5 Windows capture and encode | Not started | [UNVERIFIED] |
 | M6 Windows host agent | Not started | [UNVERIFIED] |
 | M7 End-to-end viewer | Not started | [UNVERIFIED] |
@@ -438,3 +438,23 @@ M3b should implement viewer and host session lifecycle state machines using fake
 4. **PASS** — Both isolated spike crates passed `cargo fmt --manifest-path … -- --check`, `cargo check --manifest-path …`, and `cargo clippy --manifest-path … --all-targets -- -D warnings`.
 5. **PASS — MEASURED-RUN** — Both 60-second native synthetic-stream windows completed on Windows 10.0.19045. Exact inputs, run output, interval statistics, and limits are in each spike README and ADR 0001.
 6. **PASS — HUMAN-VERIFIED** — On 2026-10-06, the owner watched the final 60-second iced synthetic stream on Windows PC #1 and reported no visible stutter. Physical present cadence was not independently measured; counters and limitations are recorded in ADR 0001 and the spike README.
+
+### 2026-10-07 — M4b fake UI shell
+
+- [VERIFIED-RUN] Implemented the `racc-core` metadata-only UI bus and separate `FrameSource`/`FrameSink` frame handoff, deterministic `racc-testkit::FakeCore`, pure app view-model reducer, iced native-wgpu shell, tokenized layout, fake home/settings flows, focus traversal, and no-op tray interface. No real networking, capture, decode, clipboard transport, or input forwarding was added.
+- [VERIFIED-RUN] The release `racc-app --fake` window opened, emitted its measurement summary, and exited with status 0 in the open, collapsed, and idle runs. Logs confirm the mode ran; no screenshot was available to the agent, so visual layout review remains HUMAN-PENDING.
+- [TESTED-FAKE] Display and device switching retain the old frame through the 150 ms fake delay and matching StreamReset/StreamStarted events; the separate latest-frame handoff changes only when the matching DecoderReady event is polled. Quality reset follows the same frame gate. Remote Desktop enables keyboard and mouse capture together; quality selection and stream dimensions update in the reducer.
+- [VERIFIED-RUN] `scripts/check-all.ps1` completed workspace formatting, clippy, tests, layering, feature-gate, and cargo-deny phases successfully. The full workspace tests passed (including the long transport soak); app 10, core 6, and testkit 27 tests passed. `cargo deny` allowed the observed BSL-1.0, Zlib, CC0-1.0, ISC, and Unicode-3.0 dependencies; advisories report only existing duplicate-version and unmaintained-crate warnings.
+- [VERIFIED-RUN] Core dependency tree contains only proto, topology, telemetry, and session beneath `racc-core`; it has no `racc-app` dependency. Search `rg -ni discord crates` returned no matches. Audio remains disabled as a “not supported” placeholder, and there is no GPU usage telemetry field.
+- [VERIFIED-RUN] Release measurements and methods are in `docs/UI.md`: open sidebar 1,682 frame-ID cadence samples (33.20 ms median, 34.96 ms p95, 20 >40 ms), 0.046 CPU-s/s, 312.7/312.8 MiB private mean/peak; collapsed sidebar 1,711 samples (33.26/34.93 ms, 20 >40 ms), 0.046 CPU-s/s, 311.1/311.2 MiB; fake idle 0.009 CPU-s/s and 305.4/305.5 MiB. Cadence is a frame-source observation proxy, not physical presentation.
+- [VERIFIED-RUN] `docs/UI.md`, `docs/HARDWARE.md`, `docs/goals/M4b.md`, `docs/OPEN_QUESTIONS.md`, ADR 0001, `deny.toml`, and this progress report were updated. The absent `docs/goals/COMMON.md` remains resolved per owner authorization to use AGENTS and prompt acceptance checks.
+
+#### M4b acceptance report
+
+1. **PASS — TESTED-FAKE** — View-model reducer and layout tests pass; fake scenario tests cover seeded event order, authorization, discovery, 30 fps frame source, telemetry, 150 ms switching, decoder-ready frame replacement, and quality reset.
+2. **PASS — TESTED-FAKE** — `racc-core` builds and tests without `racc-app`; `scripts/check-layering.ps1` passed for all 13 library crates.
+3. **PASS — VERIFIED-RUN** — Release fake app launched and exited normally for the requested measurement modes. Visual layout and control review remains HUMAN-PENDING because no agent screenshot was captured.
+4. **PASS — VERIFIED-RUN** — Open/collapsed 60-second source-frame measurements, idle CPU/memory, sampling windows, and limits are documented in `docs/UI.md`; M4a figures are compared with their distinct measurement method.
+5. **PASS — VERIFIED-RUN** — Search found no Discord branding in `crates`; audio is a disabled placeholder and GPU-usage telemetry is absent.
+6. **PASS — VERIFIED-RUN** — UI and milestone docs are present, including the owner checklist in `docs/HARDWARE.md` and known screen-reader labeling limitation.
+7. **HUMAN-PENDING** — Owner to launch `cargo run -p racc-app -- --fake`, review visual regions, hover/selected states, collapsible sidebars, resize/drag behavior, keyboard traversal and Escape, telemetry readability/jank, disabled audio, and accessibility. Record requested iterations before M4b is complete. Stop here; do not begin M5.

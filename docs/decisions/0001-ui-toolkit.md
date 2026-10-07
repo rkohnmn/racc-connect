@@ -14,6 +14,10 @@ Select iced 0.14.0 with its native wgpu renderer for the app. Put video in an ic
 
 The measured iced upload cadence was closer to 30 Hz than Slint at the required input period. Iced also draws NV12 directly in the existing UI render pass. Slint can share a wgpu device and queue, but its documented imported-image path in this spike needed a separate NV12-to-RGBA conversion texture/pass before displaying the frame. Iced's permissive MIT license avoids an app-level framework attribution obligation. Its overall project still describes itself as experimental software; keep it behind `racc-app` and pin the tested release deliberately.
 
+
+## M4b dependency license review
+
+The resolved iced/wgpu dependency graph includes BSL-1.0 (`clipboard-win`, `error-code`), Zlib (`foldhash`, `slotmap`), CC0-1.0 (`hexf-parse`), ISC (`libloading`), and Unicode-3.0 (`unicode-ident`), in addition to MIT and Apache-2.0. `deny.toml` allows these observed permissive/public-domain SPDX identifiers; the M4b `cargo deny` run reports no GPL or AGPL dependency. Recheck attribution and notice requirements when preparing M10 packages.
 ## Spike evidence
 
 Both native mock layouts displayed the moving test pattern. Each prototype generated a 1920×1080 NV12 frame (3,110,400 bytes) every 33,333 μs and updated telemetry on a 250 ms period. Commands, complete console output, source, and measurement limits are recorded in the isolated spike READMEs: [`spikes/m4a-iced/README.md`](../../spikes/m4a-iced/README.md) and [`spikes/m4a-slint/README.md`](../../spikes/m4a-slint/README.md).

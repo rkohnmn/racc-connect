@@ -2,6 +2,8 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+#[cfg(feature = "fake-core")]
+mod fake_core;
 mod impairment;
 #[cfg(test)]
 mod loopback;
@@ -11,6 +13,9 @@ mod soak;
 
 #[cfg(test)]
 pub(crate) static TIMING_SENSITIVE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[cfg(feature = "fake-core")]
+pub use fake_core::{FakeCore, FakeFrameSource, DEFAULT_FAKE_SEED};
 
 pub use impairment::{
     DeliveredDatagram, ImpairmentProfile, ImpairmentStats, SimulatedNetwork,

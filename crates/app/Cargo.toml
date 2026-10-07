@@ -3,3 +3,9 @@ name = "racc-app"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
+
+[dependencies]
+iced = { version = "=0.14.0", default-features = false, features = ["wgpu", "advanced", "tokio"] }
+racc-core = { path = "../core" }
+racc-testkit = { path = "../testkit" }
+racc-topology = { path = "../topology" }

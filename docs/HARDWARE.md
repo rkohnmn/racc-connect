@@ -68,3 +68,13 @@ Specifications below were supplied by the owner on 2026-10-06 and have not been 
 ## M4a — UI toolkit smoothness check
 
 - [x] [HUMAN-VERIFIED — OWNER; 2026-10-06] On Windows PC #1, watched the iced M4a 1920×1080 synthetic NV12 stream during the 60-second run; owner reported no visible stutter. Agent-side upload intervals still show a 159.509 ms maximum outlier, and framework callbacks do not measure physical presents. Run command: `cargo run --manifest-path spikes/m4a-iced/Cargo.toml --release -- --duration-secs 60`.
+
+## M4b — Fake UI visual review
+
+- [ ] [HUMAN-PENDING] Launch cargo run -p racc-app -- --fake; confirm the four regions, fake devices/displays, synthetic stream, and telemetry/events are visible.
+- [ ] [HUMAN-PENDING] Review the dark palette, spacing, text sizes, and selected/hover/pressed states against AGENTS.md section 5.2; report concrete changes desired.
+- [ ] [HUMAN-PENDING] Collapse and expand both sidebars; resize the window and drag it between displays. Check that the workspace remains usable and the video stays letterboxed.
+- [ ] [HUMAN-PENDING] Verify keyboard traversal with Tab and Shift+Tab, activation with Enter and Space, the visible focus ring, and Escape release of keyboard/mouse capture.
+- [ ] [HUMAN-PENDING] Check session/host telemetry and event-log readability while the stream runs; report any visible jank or layout disturbance during updates.
+- [ ] [HUMAN-PENDING] Confirm Audio is visibly disabled and marked “not supported.” Note any accessibility or screen-reader issues; the current UI does not assign explicit accessible names/roles.
+- [ ] [HUMAN-PENDING] Tell the agent what visual or interaction changes to make. M4b remains pending until the requested iterations are reviewed.

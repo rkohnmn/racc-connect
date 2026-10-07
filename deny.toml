@@ -4,7 +4,8 @@
 yanked = "warn"
 
 [licenses]
-allow = ["MIT", "Apache-2.0"]
+# iced/wgpu platform dependencies also use these permissive or public-domain licenses.
+allow = ["MIT", "Apache-2.0", "BSL-1.0", "CC0-1.0", "ISC", "Unicode-3.0", "Zlib"]
 confidence-threshold = 0.93
 private = { ignore = true }
 
