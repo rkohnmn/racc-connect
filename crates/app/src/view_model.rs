@@ -6,7 +6,7 @@ use racc_core::{
 };
 
 /// Main shell view visible to the user.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub enum Page {
     /// Connected or selected remote desktop session.
     #[default]
@@ -18,7 +18,7 @@ pub enum Page {
 }
 
 /// Session overlay state, rendered above the held or current frame.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
 pub enum SessionOverlay {
     /// No blocking session state.
     #[default]
@@ -55,6 +55,8 @@ pub enum UserAction {
     SetDefaultQuality(QualityPreset),
     /// Select a device in the rail.
     SelectDevice(DeviceId),
+    /// Connect to an available host from Home.
+    Connect(DeviceId),
     /// Select a remote display.
     SelectDisplay(racc_core::DisplayId),
     /// Change viewer quality preference.
@@ -153,6 +155,22 @@ impl ViewModel {
                     self.session_quality = self.default_quality;
                     return vec![
                         UiCommand::SelectDevice(device_id.clone()),
+                        UiCommand::SetQuality {
+                            device_id,
+                            quality: self.default_quality,
+                        },
+                    ];
+                }
+                return Vec::new();
+            }
+            UserAction::Connect(device_id) => {
+                if self.device_online(&device_id) {
+                    self.core.selected_device = Some(device_id.clone());
+                    self.page = Page::Session;
+                    self.overlay = SessionOverlay::Connecting;
+                    self.session_quality = self.default_quality;
+                    return vec![
+                        UiCommand::Connect(device_id.clone()),
                         UiCommand::SetQuality {
                             device_id,
                             quality: self.default_quality,
@@ -488,6 +506,42 @@ mod tests {
     }
 
     #[test]
+    fn home_connect_uses_the_connect_command_for_available_hosts() {
+        let mut state = model();
+        let online = state
+            .core
+            .devices
+            .iter()
+            .find(|device| device.online && device.host_capable)
+            .expect("online host")
+            .id
+            .clone();
+        assert_eq!(
+            state.reduce_action(UserAction::Connect(online.clone())),
+            vec![
+                UiCommand::Connect(online.clone()),
+                UiCommand::SetQuality {
+                    device_id: online.clone(),
+                    quality: QualityPreset::P720,
+                },
+            ]
+        );
+        assert_eq!(state.core.selected_device, Some(online));
+        assert_eq!(state.page, Page::Session);
+        assert_eq!(state.overlay, SessionOverlay::Connecting);
+
+        let offline = state
+            .core
+            .devices
+            .iter()
+            .find(|device| !device.online)
+            .expect("offline device")
+            .id
+            .clone();
+        assert!(state.reduce_action(UserAction::Connect(offline)).is_empty());
+    }
+
+    #[test]
     fn discovery_and_default_quality_actions_update_the_expected_state() {
         let mut state = model();
         assert_eq!(
@@ -554,6 +608,45 @@ mod tests {
         });
         assert_eq!(state.held_frame_id, None);
         assert_eq!(state.overlay, SessionOverlay::None);
+    }
+
+    #[test]
+    fn any_available_display_can_be_selected_and_unavailable_displays_are_ignored() {
+        let mut state = model();
+        let device_id = state.core.selected_device.clone().expect("selected device");
+        let device = state
+            .core
+            .devices
+            .iter()
+            .find(|device| device.id == device_id)
+            .expect("selected device snapshot");
+        let selected = state.core.selected_display;
+        let other_id = device
+            .displays
+            .iter()
+            .find(|display| display.available && Some(display.id) != selected)
+            .expect("another available display")
+            .id;
+        assert_eq!(
+            state.reduce_action(UserAction::SelectDisplay(other_id)),
+            vec![UiCommand::SelectDisplay {
+                device_id: device_id.clone(),
+                display_id: other_id,
+            }]
+        );
+
+        let unavailable = state
+            .core
+            .devices
+            .iter_mut()
+            .find(|device| device.id == device_id)
+            .and_then(|device| device.displays.iter_mut().next())
+            .expect("display");
+        unavailable.available = false;
+        let unavailable_id = unavailable.id;
+        assert!(state
+            .reduce_action(UserAction::SelectDisplay(unavailable_id))
+            .is_empty());
     }
 
     #[test]

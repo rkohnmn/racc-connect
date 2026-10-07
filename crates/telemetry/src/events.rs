@@ -11,7 +11,7 @@ pub const EVENT_DETAIL_MAX_BYTES: usize = 160;
 static NEXT_EVENT_ID: AtomicU64 = AtomicU64::new(1);
 
 /// Lifecycle and quality event category exposed to the UI.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum EventKind {
     /// A session completed its handshake.
     ConnectionEstablished,

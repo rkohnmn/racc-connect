@@ -6,7 +6,7 @@ use core::fmt;
 use racc_proto::{CaptureBackend, Encoder, StatsReport};
 
 /// Control-connection lifecycle shown by telemetry.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub enum ConnectionState {
     /// No connection is active.
     #[default]
@@ -22,7 +22,7 @@ pub enum ConnectionState {
 }
 
 /// Current Tailscale path classification.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub enum PathKind {
     /// Path has not been reported.
     #[default]
@@ -34,7 +34,7 @@ pub enum PathKind {
 }
 
 /// Video codec selected for the stream.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub enum CodecKind {
     /// Codec has not yet been reported.
     #[default]
@@ -44,7 +44,7 @@ pub enum CodecKind {
 }
 
 /// Decoder implementation. Current protocol StatsReport does not transmit decoder kind.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub enum DecoderKind {
     /// Decoder has not been reported.
     #[default]
@@ -82,7 +82,7 @@ impl DecoderKind {
 }
 
 /// Host capture backend, normalized from StatsReport numeric codes.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub enum CaptureBackendKind {
     /// Backend has not been reported or is not recognized.
     #[default]
@@ -128,7 +128,7 @@ impl From<CaptureBackend> for CaptureBackendKind {
 }
 
 /// Host encoder, normalized from StatsReport numeric codes.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub enum EncoderKind {
     /// Encoder has not been reported or is not recognized.
     #[default]
@@ -215,7 +215,7 @@ pub struct SessionSnapshot {
 }
 
 /// Host telemetry snapshot, excluding dropped GPU usage.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct HostSnapshot {
     /// Host CPU percent multiplied by ten.
     pub cpu_pct_x10: u16,

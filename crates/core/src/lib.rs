@@ -40,7 +40,7 @@ impl fmt::Display for DeviceId {
 }
 
 /// Display metadata suitable for one device row in the UI.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct DisplaySnapshot {
     /// Stable display identifier.
     pub id: DisplayId,
@@ -78,7 +78,7 @@ impl From<&racc_topology::Display> for DisplaySnapshot {
 }
 
 /// One discovered or remembered peer and its current display topology.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct DeviceSnapshot {
     /// Stable identity of this peer.
     pub id: DeviceId,
@@ -132,7 +132,7 @@ impl Default for CoreSnapshot {
 }
 
 /// Video quality preference sent by the viewer; the host remains authoritative.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum QualityPreset {
     /// Request the 480p30 tier.
     P480,

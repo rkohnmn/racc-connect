@@ -5,7 +5,7 @@ use crate::{
 };
 
 /// Identifies the operating system represented in a handshake.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum OsType {
     /// Unknown or unreported operating system.

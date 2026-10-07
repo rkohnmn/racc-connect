@@ -14,7 +14,9 @@ use iced::{Background, Border, Color, Element, Fill, Rectangle, Subscription, Ta
 use racc_core::{CoreHandle, DeviceId, FramePayload, FrameSource, QualityPreset};
 use racc_testkit::{FakeCore, DEFAULT_FAKE_SEED};
 use std::{
+    collections::hash_map::DefaultHasher,
     env,
+    hash::{Hash, Hasher},
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -93,6 +95,94 @@ struct App {
     measurement_reported: bool,
     fake_idle: bool,
     tray: NoopTrayController,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct RegionCacheKeys {
+    rail: u64,
+    device_sidebar: u64,
+    workspace: u64,
+    telemetry_sidebar: u64,
+}
+
+fn hash_dependency<T: Hash>(dependency: &T) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    dependency.hash(&mut hasher);
+    hasher.finish()
+}
+
+fn visible_telemetry_hash(model: &ViewModel) -> u64 {
+    let telemetry = &model.core.telemetry;
+    let session = telemetry.session;
+    let host = telemetry.host;
+    let mut hasher = DefaultHasher::new();
+
+    session.connection_state.hash(&mut hasher);
+    session.path.hash(&mut hasher);
+    session.last_rtt_us.hash(&mut hasher);
+    session.loss_fraction.to_bits().hash(&mut hasher);
+    session.bitrate_bps.hash(&mut hasher);
+    session.fps.to_bits().hash(&mut hasher);
+    session.codec.hash(&mut hasher);
+    session.decoder.hash(&mut hasher);
+    host.cpu_pct_x10.hash(&mut hasher);
+    host.capture_backend.hash(&mut hasher);
+    host.encoder.hash(&mut hasher);
+    host.width.hash(&mut hasher);
+    host.height.hash(&mut hasher);
+    host.refresh_mhz.hash(&mut hasher);
+    for event in telemetry.events.events().iter().rev().take(8).rev() {
+        event.id.hash(&mut hasher);
+        event.ts_us.hash(&mut hasher);
+        event.kind.hash(&mut hasher);
+        event.detail.hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
+fn region_cache_keys(model: &ViewModel, fullscreen: bool, fake_idle: bool) -> RegionCacheKeys {
+    RegionCacheKeys {
+        rail: hash_dependency(&(model.page, &model.core.devices, &model.core.selected_device)),
+        device_sidebar: hash_dependency(&(
+            model.device_sidebar_collapsed,
+            &model.core.devices,
+            &model.core.selected_device,
+            model.core.selected_display,
+            &model.core.local_device_name,
+            model.core.hosting_enabled,
+            model.page,
+            model.keyboard_capture,
+            model.mouse_capture,
+            &model.clipboard_status,
+            &model.overlay,
+        )),
+        workspace: hash_dependency(&(
+            (
+                model.page,
+                &model.core.devices,
+                &model.core.selected_device,
+                model.core.selected_display,
+                model.stream_dimensions,
+                &model.overlay,
+                model.session_quality,
+            ),
+            (
+                model.default_quality,
+                model.keyboard_capture,
+                model.core.telemetry.session.last_rtt_us,
+                &model.notification,
+                fullscreen,
+                fake_idle,
+                model.core.hosting_enabled,
+            ),
+        )),
+        telemetry_sidebar: hash_dependency(&(
+            model.telemetry_sidebar_collapsed,
+            visible_telemetry_hash(model),
+            &model.notification,
+            &model.clipboard_status,
+        )),
+    }
 }
 
 impl App {
@@ -285,17 +375,22 @@ impl App {
             self.model.device_sidebar_collapsed,
             self.model.telemetry_sidebar_collapsed,
         );
+        let keys = region_cache_keys(&self.model, self.fullscreen, self.fake_idle);
         row![
-            self.device_rail(),
-            self.device_sidebar().width(widths.device_sidebar),
-            self.workspace().width(Fill),
-            self.telemetry_sidebar().width(widths.telemetry)
+            iced::widget::lazy(keys.rail, |_| self.device_rail()),
+            iced::widget::lazy(keys.device_sidebar, move |_| {
+                self.device_sidebar().width(widths.device_sidebar)
+            }),
+            iced::widget::lazy(keys.workspace, |_| self.workspace().width(Fill)),
+            iced::widget::lazy(keys.telemetry_sidebar, move |_| {
+                self.telemetry_sidebar().width(widths.telemetry)
+            })
         ]
         .height(Fill)
         .into()
     }
 
-    fn device_rail(&self) -> Element<'_, Message> {
+    fn device_rail(&self) -> Element<'static, Message> {
         let mut rail = column![
             action_button(
                 "RC",
@@ -365,7 +460,7 @@ impl App {
             .into()
     }
 
-    fn device_sidebar(&self) -> iced::widget::Container<'_, Message> {
+    fn device_sidebar(&self) -> iced::widget::Container<'static, Message> {
         if self.model.device_sidebar_collapsed {
             return container(
                 column![
@@ -374,12 +469,12 @@ impl App {
                         Some(Message::Action(UserAction::ToggleDeviceSidebar)),
                         false
                     ),
-                    local_panel(&self.model)
+                    compact_local_panel(&self.model)
                 ]
-                .spacing(tokens::SPACE_3),
+                .spacing(tokens::SPACE_1),
             )
             .height(Fill)
-            .padding(tokens::SPACE_3)
+            .padding(tokens::SPACE_1)
             .style(panel_style(tokens::SIDEBAR));
         }
         let selected = self.selected_device();
@@ -416,10 +511,13 @@ impl App {
         } else {
             displays = displays.push(muted_text("Choose an online device from the rail"));
         }
+        let selected_name = selected.map_or_else(
+            || "No device selected".to_owned(),
+            |device| device.name.clone(),
+        );
         let header = row![
             column![
-                text(selected.map_or("No device selected", |device| device.name.as_str()))
-                    .size(tokens::HEADER_SIZE),
+                text(selected_name).size(tokens::HEADER_SIZE),
                 muted_text(selected.map_or("Choose a device from the rail", |device| {
                     if device.online {
                         "Online  ·  remote display host"
@@ -488,7 +586,7 @@ impl App {
             .find(|device| &device.id == selected)
     }
 
-    fn workspace(&self) -> iced::widget::Container<'_, Message> {
+    fn workspace(&self) -> iced::widget::Container<'static, Message> {
         match self.model.page {
             Page::Home => self.home_page(),
             Page::Settings => self.settings_page(),
@@ -496,7 +594,7 @@ impl App {
         }
     }
 
-    fn session_page(&self) -> iced::widget::Container<'_, Message> {
+    fn session_page(&self) -> iced::widget::Container<'static, Message> {
         let device = self.selected_device();
         let display = device.and_then(|device| {
             self.model
@@ -557,6 +655,7 @@ impl App {
             ]
             .spacing(tokens::SPACE_1)
             .align_y(iced::Alignment::Center),
+            self.monitor_selector(),
             quality_controls(
                 self.model.core.selected_device.clone(),
                 self.model.session_quality,
@@ -601,7 +700,36 @@ impl App {
         .style(panel_style(tokens::MAIN))
     }
 
-    fn home_page(&self) -> iced::widget::Container<'_, Message> {
+    fn monitor_selector(&self) -> Element<'static, Message> {
+        let Some(device) = self.selected_device() else {
+            return row![section_label("MONITOR"), muted_text("No device selected")].into();
+        };
+
+        let mut monitors = row![section_label("MONITOR")]
+            .spacing(tokens::SPACE_1)
+            .align_y(iced::Alignment::Center);
+        for display in &device.displays {
+            let selected = self.model.core.selected_display == Some(display.id);
+            let label = format!(
+                "{}  {}×{}",
+                display.name, display.width_px, display.height_px
+            );
+            let action = display
+                .available
+                .then_some(Message::Action(UserAction::SelectDisplay(display.id)));
+            monitors = monitors.push(action_button(&label, action, selected));
+        }
+        scrollable(monitors)
+            .width(Fill)
+            .height(iced::Length::Shrink)
+            .direction(scrollable::Direction::Horizontal(
+                scrollable::Scrollbar::default(),
+            ))
+            .style(scroll_style)
+            .into()
+    }
+
+    fn home_page(&self) -> iced::widget::Container<'static, Message> {
         let mut devices = column![
             text("Home").size(tokens::HEADER_SIZE),
             muted_text("Known devices running the Racc host agent")
@@ -630,7 +758,7 @@ impl App {
                 action_button(
                     "Connect",
                     (device.online && device.host_capable)
-                        .then(|| Message::Action(UserAction::SelectDevice(device.id.clone()))),
+                        .then(|| Message::Action(UserAction::Connect(device.id.clone()))),
                     false
                 )
             ]
@@ -647,7 +775,7 @@ impl App {
             .style(panel_style(tokens::MAIN))
     }
 
-    fn settings_page(&self) -> iced::widget::Container<'_, Message> {
+    fn settings_page(&self) -> iced::widget::Container<'static, Message> {
         let hosting = self.model.core.hosting_enabled;
         let mut allowlist = column![section_label("ALLOWLIST")].spacing(tokens::SPACE_2);
         for device in &self.model.core.devices {
@@ -720,7 +848,7 @@ impl App {
         .style(panel_style(tokens::MAIN))
     }
 
-    fn telemetry_sidebar(&self) -> iced::widget::Container<'_, Message> {
+    fn telemetry_sidebar(&self) -> iced::widget::Container<'static, Message> {
         if self.model.telemetry_sidebar_collapsed {
             return container(action_button(
                 "‹",
@@ -810,7 +938,7 @@ impl App {
     }
 }
 
-fn local_panel(model: &ViewModel) -> Element<'_, Message> {
+fn local_panel(model: &ViewModel) -> Element<'static, Message> {
     container(
         column![
             section_label("LOCAL SESSION"),
@@ -857,6 +985,66 @@ fn local_panel(model: &ViewModel) -> Element<'_, Message> {
     )
     .padding(tokens::SPACE_2)
     .style(panel_style(tokens::CARD))
+    .into()
+}
+
+fn compact_local_panel(model: &ViewModel) -> Element<'static, Message> {
+    let status = if model.core.hosting_enabled {
+        "Hosting on"
+    } else {
+        "Viewer connected"
+    };
+    let local_label = format!("{} · {status}", model.core.local_device_name);
+    let audio = tooltip(
+        button(text("A"))
+            .padding(tokens::SPACE_1)
+            .style(|_theme: &Theme, _status| button::Style {
+                text_color: tokens::MUTED,
+                ..Default::default()
+            }),
+        text("not supported"),
+        iced::widget::tooltip::Position::Right,
+    );
+    column![
+        tooltip(
+            action_button("L", None, false),
+            text(local_label),
+            iced::widget::tooltip::Position::Right,
+        ),
+        tooltip(
+            action_button(
+                "K",
+                Some(Message::Action(UserAction::SetKeyboardCapture(
+                    !model.keyboard_capture,
+                ))),
+                model.keyboard_capture,
+            ),
+            text("Keyboard capture"),
+            iced::widget::tooltip::Position::Right,
+        ),
+        tooltip(
+            action_button(
+                "M",
+                Some(Message::Action(UserAction::SetMouseCapture(
+                    !model.mouse_capture,
+                ))),
+                model.mouse_capture,
+            ),
+            text("Mouse capture"),
+            iced::widget::tooltip::Position::Right,
+        ),
+        audio,
+        tooltip(
+            action_button(
+                "S",
+                Some(Message::Action(UserAction::Settings)),
+                model.page == Page::Settings,
+            ),
+            text("Settings"),
+            iced::widget::tooltip::Position::Right,
+        ),
+    ]
+    .spacing(tokens::SPACE_1)
     .into()
 }
 
@@ -1194,5 +1382,35 @@ impl iced::widget::shader::Pipeline for VideoPipeline {
             bind_group,
             uniform_buffer,
         }
+    }
+}
+
+#[cfg(test)]
+mod cache_tests {
+    use super::*;
+
+    #[test]
+    fn telemetry_changes_rebuild_only_dependent_view_regions() {
+        let fake = FakeCore::new(DEFAULT_FAKE_SEED);
+        let snapshot = fake.snapshot().expect("fake snapshot");
+        let mut model = ViewModel::new(snapshot);
+        let initial = region_cache_keys(&model, false, false);
+
+        model.core.telemetry.session.fps += 0.5;
+        let stats_changed = region_cache_keys(&model, false, false);
+        assert_eq!(initial.rail, stats_changed.rail);
+        assert_eq!(initial.device_sidebar, stats_changed.device_sidebar);
+        assert_eq!(initial.workspace, stats_changed.workspace);
+        assert_ne!(initial.telemetry_sidebar, stats_changed.telemetry_sidebar);
+
+        model.core.telemetry.session.last_rtt_us = Some(12_000);
+        let rtt_changed = region_cache_keys(&model, false, false);
+        assert_eq!(stats_changed.rail, rtt_changed.rail);
+        assert_eq!(stats_changed.device_sidebar, rtt_changed.device_sidebar);
+        assert_ne!(stats_changed.workspace, rtt_changed.workspace);
+        assert_ne!(
+            stats_changed.telemetry_sidebar,
+            rtt_changed.telemetry_sidebar
+        );
     }
 }

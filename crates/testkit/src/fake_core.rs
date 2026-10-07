@@ -292,6 +292,69 @@ impl FakeCore {
         self.select_display(device_id, next);
     }
 
+    fn select_device(&mut self, device_id: DeviceId) {
+        let Some(device) = self.device_snapshot(&device_id) else {
+            return;
+        };
+        let previous_device = self.snapshot.selected_device.clone();
+        if let Some(previous) = previous_device
+            .as_ref()
+            .filter(|previous| *previous != &device_id)
+        {
+            self.update_streamed_display(previous, None);
+        }
+        self.pending_switch = None;
+        self.snapshot.selected_device = Some(device_id.clone());
+        let display = device
+            .displays
+            .iter()
+            .find(|display| display.available && display.primary)
+            .or_else(|| device.displays.iter().find(|display| display.available));
+        self.snapshot.selected_display = display.map(|display| display.id);
+        if device.online && device.host_capable {
+            self.connected = self.snapshot.selected_display.is_some();
+            if let (Some(display_id), Some(topology)) = (
+                self.snapshot.selected_display,
+                self.topology_for(&device_id, self.snapshot.selected_display),
+            ) {
+                self.events.push_back(CoreEvent::TopologyChanged {
+                    device_id: device_id.clone(),
+                    topology,
+                });
+                self.events.push_back(CoreEvent::DisplaySelected {
+                    device_id: device_id.clone(),
+                    display_id,
+                });
+                self.record_event(
+                    EventKind::DisplaySwitch,
+                    format!(
+                        "Connecting to {} while holding the previous frame.",
+                        device.name
+                    ),
+                );
+                self.staged_frame = None;
+                self.pending_switch = Some(PendingSwitch {
+                    device_id,
+                    display_id,
+                    completes_at_us: self.elapsed_us.saturating_add(SWITCH_HOLD_US),
+                });
+            } else if let Some(device_id) = self.snapshot.selected_device.clone() {
+                self.events
+                    .push_back(CoreEvent::VideoUnavailable { device_id });
+            }
+        } else {
+            self.connected = false;
+            if !device.online {
+                self.events
+                    .push_back(CoreEvent::DeviceOffline { device_id });
+            } else {
+                self.events
+                    .push_back(CoreEvent::VideoUnavailable { device_id });
+            }
+        }
+        self.update_telemetry();
+    }
+
     fn select_display(&mut self, device_id: DeviceId, display_id: DisplayId) {
         let Some(device) = self.devices.iter().find(|device| device.id == device_id) else {
             return;
@@ -705,68 +768,7 @@ impl CoreHandle for FakeCore {
                     format!("Found {online_hosts} online host(s) in the fake scenario."),
                 );
             }
-            UiCommand::SelectDevice(device_id) => {
-                let Some(device) = self.device_snapshot(&device_id) else {
-                    return Ok(());
-                };
-                let previous_device = self.snapshot.selected_device.clone();
-                if let Some(previous) = previous_device
-                    .as_ref()
-                    .filter(|previous| *previous != &device_id)
-                {
-                    self.update_streamed_display(previous, None);
-                }
-                self.pending_switch = None;
-                self.snapshot.selected_device = Some(device_id.clone());
-                let display = device
-                    .displays
-                    .iter()
-                    .find(|display| display.available && display.primary)
-                    .or_else(|| device.displays.iter().find(|display| display.available));
-                self.snapshot.selected_display = display.map(|display| display.id);
-                if device.online && device.host_capable {
-                    self.connected = self.snapshot.selected_display.is_some();
-                    if let (Some(display_id), Some(topology)) = (
-                        self.snapshot.selected_display,
-                        self.topology_for(&device_id, self.snapshot.selected_display),
-                    ) {
-                        self.events.push_back(CoreEvent::TopologyChanged {
-                            device_id: device_id.clone(),
-                            topology,
-                        });
-                        self.events.push_back(CoreEvent::DisplaySelected {
-                            device_id: device_id.clone(),
-                            display_id,
-                        });
-                        self.record_event(
-                            EventKind::DisplaySwitch,
-                            format!(
-                                "Connecting to {} while holding the previous frame.",
-                                device.name
-                            ),
-                        );
-                        self.staged_frame = None;
-                        self.pending_switch = Some(PendingSwitch {
-                            device_id,
-                            display_id,
-                            completes_at_us: self.elapsed_us.saturating_add(SWITCH_HOLD_US),
-                        });
-                    } else if let Some(device_id) = self.snapshot.selected_device.clone() {
-                        self.events
-                            .push_back(CoreEvent::VideoUnavailable { device_id });
-                    }
-                } else {
-                    self.connected = false;
-                    if !device.online {
-                        self.events
-                            .push_back(CoreEvent::DeviceOffline { device_id });
-                    } else {
-                        self.events
-                            .push_back(CoreEvent::VideoUnavailable { device_id });
-                    }
-                }
-                self.update_telemetry();
-            }
+            UiCommand::SelectDevice(device_id) => self.select_device(device_id),
             UiCommand::SelectDisplay {
                 device_id,
                 display_id,
@@ -864,42 +866,7 @@ impl CoreHandle for FakeCore {
                 }
                 self.update_telemetry();
             }
-            UiCommand::Connect(device_id) => {
-                if let Some(device) = self.device_snapshot(&device_id) {
-                    if device.online && device.host_capable {
-                        self.snapshot.selected_device = Some(device_id.clone());
-                        self.snapshot.selected_display = device
-                            .displays
-                            .iter()
-                            .find(|display| display.available && display.primary)
-                            .or_else(|| device.displays.iter().find(|display| display.available))
-                            .map(|display| display.id);
-                        self.connected = self.snapshot.selected_display.is_some();
-                        self.update_telemetry();
-                        if let Some(display_id) = self.snapshot.selected_display {
-                            if let Some((width, height)) = stream_dimensions(
-                                &self.devices,
-                                &device_id,
-                                display_id,
-                                self.quality,
-                            ) {
-                                self.events.push_back(CoreEvent::StreamStarted {
-                                    device_id,
-                                    display_id,
-                                    width,
-                                    height,
-                                    fps: 30,
-                                });
-                            }
-                        }
-                    } else if self.pending_authorization.as_ref() == Some(&device_id) {
-                        self.events.push_back(CoreEvent::PendingAuthorization {
-                            device_id,
-                            device_name: device.name,
-                        });
-                    }
-                }
-            }
+            UiCommand::Connect(device_id) => self.select_device(device_id),
             UiCommand::ApprovePeer(device_id) => {
                 if self.pending_authorization.as_ref() == Some(&device_id) {
                     self.pending_authorization = None;
@@ -1163,6 +1130,35 @@ mod tests {
             snapshot.telemetry.session.connection_state,
             ConnectionState::Disconnected
         );
+    }
+
+    #[test]
+    fn connect_command_uses_the_held_frame_and_decoder_ready_lifecycle() {
+        let mut fake = FakeCore::new(41);
+        let snapshot = fake.snapshot().expect("fake snapshot");
+        let device_id = snapshot.selected_device.expect("selected host");
+        let display_id = snapshot.selected_display.expect("selected display");
+        let source = fake.frame_source();
+        let previous_frame = source.latest_frame().expect("initial frame");
+        let _ = fake.poll_events(128);
+
+        fake.send(UiCommand::Connect(device_id.clone()))
+            .expect("connect command");
+        assert_eq!(source.latest_frame(), Some(previous_frame.clone()));
+        fake.advance_by(Duration::from_millis(150));
+        let events = fake.poll_events(128).expect("connect events");
+        let replacement = source.latest_frame().expect("replacement frame");
+        assert_eq!(replacement.display_id, Some(display_id));
+        assert!(replacement.frame_id > previous_frame.frame_id);
+        assert!(events.iter().any(|event| matches!(
+            event,
+            CoreEvent::StreamStarted { device_id: event_device, display_id: event_display, .. }
+                if event_device == &device_id && *event_display == display_id
+        )));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            CoreEvent::DecoderReady { device_id: event_device } if event_device == &device_id
+        )));
     }
 
     #[test]

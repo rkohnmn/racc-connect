@@ -7,7 +7,7 @@ Save as `docs/goals/M4b.md`.
 
 ## Human checklist
 1. Working tree clean on `main`.
-2. After the run, launch the app yourself (`cargo run -p racc-app -- --fake`) and judge the look, hover states and smoothness against the style description. Tell me what to change; visual polish takes iteration.
+2. After the run, launch the app yourself (`cargo run -p racc-app -- --fake`) and judge the look, hover states and smoothness against the style description. Check the header monitor selector and compact local controls in the collapsed device sidebar. Tell me what to change; visual polish takes iteration.
 
 ## Launcher
 ```
