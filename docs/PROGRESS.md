@@ -22,7 +22,7 @@ Probe date: 2026-10-06 (America/New_York).
 | M2.5 Transport audit | Complete | [VERIFIED-RUN] All 14 M2.5 acceptance checks passed; the audit and final evidence are recorded below and were pushed to origin/main. No M3 work was started. |
 | M3a Topology, coordinate math, telemetry | Complete | [VERIFIED-RUN] All M3a checks pass; [COMPILE-ONLY] Windows and macOS cross-checks pass. The user authorized a normal push, and the commits were published as a fast-forward to origin/main. |
 | M3b Host and viewer session lifecycle | Complete | [VERIFIED-RUN] 45 session tests and all standard workspace checks passed; Windows and macOS target checks passed [COMPILE-ONLY]. See the M3b report below. |
-| M4a UI toolkit spike | Not started | [UNVERIFIED] |
+| M4a UI toolkit spike | Complete | [VERIFIED-RUN] iced selected and compared against Slint; [HUMAN-VERIFIED] owner reports no visible stutter on PC #1. See ADR 0001. |
 | M4b UI shell | Not started | [UNVERIFIED] |
 | M5 Windows capture and encode | Not started | [UNVERIFIED] |
 | M6 Windows host agent | Not started | [UNVERIFIED] |
@@ -423,3 +423,18 @@ M3b should implement viewer and host session lifecycle state machines using fake
 - [TESTED-FAKE] State transitions were exercised using deterministic operation results and test fixtures; this does not verify a real capture backend or hardware encoder/decoder.
 - [COMPILE-ONLY] Windows and macOS target checks passed; neither establishes platform runtime behavior.
 - [HUMAN-PENDING] Hardware capture/encode, GPU recovery, real monitor hot-switch, service/session transitions, keyboard input, real Tailscale direct/DERP paths, and end-to-end stream latency remain on `docs/HARDWARE.md`.
+### 2026-10-06 — M4a UI toolkit spike
+
+- [VERIFIED-RUN] Compared iced 0.14.0 and Slint 1.18.1 with isolated native Windows prototypes, synthetic 1920×1080 NV12 updates at the required 30 Hz, and telemetry at 4 Hz. Source, run commands, logs, dependency notes, and limits are in `spikes/m4a-iced/` and `spikes/m4a-slint/`.
+- [VERIFIED-RUN] Selected iced for M4b: its custom shader uses the same wgpu renderer and render pass and samples NV12 directly; active uploads averaged 29.97 Hz with 33.372 ms mean, 37.420 ms p95, and 96.918 ms max intervals. Its telemetry intervals averaged 249.944 ms (4.00 Hz). Slint's exact-cadence run averaged 29.70 Hz for active video intervals (33.67 ms mean, 34.68 ms p95, 60.23 ms max) and 3.93 Hz telemetry; the tested imported-image path also needs an intermediate RGBA conversion texture.
+- [VERIFIED-RUN] Both stand-alone spike packages passed formatting/compile checks as recorded in their READMEs, and both completed visible 60-second native runs. The root app/workspace dependency graph was not changed.
+- [VERIFIED-RUN] Framework render callbacks and upload intervals do not measure physical monitor presentations. The final iced run recorded a 159.509 ms maximum active upload interval; the owner watched the stream and reported no visible stutter.
+- [HUMAN-VERIFIED — OWNER] The owner watched the final 60-second iced run on Windows PC #1 and reported no visible stutter. M4a is complete; M4b may proceed.
+#### M4a automated acceptance checks
+
+1. **PASS** — `cargo fmt --all -- --check`.
+2. **PASS** — `cargo clippy --workspace --all-targets -- -D warnings`.
+3. **PASS** — `cargo test --workspace`; 154 passed, 0 failed, 1 ignored. The ignored test is the manual release-mode M2 reassembly benchmark.
+4. **PASS** — Both isolated spike crates passed `cargo fmt --manifest-path … -- --check`, `cargo check --manifest-path …`, and `cargo clippy --manifest-path … --all-targets -- -D warnings`.
+5. **PASS — MEASURED-RUN** — Both 60-second native synthetic-stream windows completed on Windows 10.0.19045. Exact inputs, run output, interval statistics, and limits are in each spike README and ADR 0001.
+6. **PASS — HUMAN-VERIFIED** — On 2026-10-06, the owner watched the final 60-second iced synthetic stream on Windows PC #1 and reported no visible stutter. Physical present cadence was not independently measured; counters and limitations are recorded in ADR 0001 and the spike README.

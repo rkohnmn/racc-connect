@@ -65,3 +65,6 @@ Specifications below were supplied by the owner on 2026-10-06 and have not been 
 - [ ] [HUMAN-PENDING] On each Windows PC, click the four corners and center of every monitor; read back the cursor location with `GetCursorPos` or an on-screen readout. Compare `MOUSEEVENTF_VIRTUALDESK` absolute mapping against `SetCursorPos` using physical coordinates in a per-monitor-DPI-aware process.
 - [ ] [HUMAN-PENDING] Repeat the Windows corner and center comparison with mixed monitor scaling at 125% and 150%.
 - [ ] [HUMAN-PENDING] On the 2015 Intel Mac, test all four corners and center on the built-in display and an external display if available, using OS-reported point geometry.
+## M4a — UI toolkit smoothness check
+
+- [x] [HUMAN-VERIFIED — OWNER; 2026-10-06] On Windows PC #1, watched the iced M4a 1920×1080 synthetic NV12 stream during the 60-second run; owner reported no visible stutter. Agent-side upload intervals still show a 159.509 ms maximum outlier, and framework callbacks do not measure physical presents. Run command: `cargo run --manifest-path spikes/m4a-iced/Cargo.toml --release -- --duration-secs 60`.

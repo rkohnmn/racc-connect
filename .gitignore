@@ -10,3 +10,4 @@ Desktop.ini
 *.swo
 *.user
 *.suo
+spikes/*/target/

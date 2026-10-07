@@ -1,0 +1,11 @@
+[package]
+name = "racc-m4a-iced-spike"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+iced = { version = "=0.14.0", default-features = false, features = ["wgpu", "advanced", "tokio"] }
+
+[workspace]
+

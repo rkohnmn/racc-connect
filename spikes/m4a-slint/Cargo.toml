@@ -1,0 +1,11 @@
+[package]
+name = "m4a-slint-spike"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+slint = { version = "~1.18", default-features = false, features = ["std", "backend-winit", "renderer-femtovg-wgpu", "unstable-wgpu-30", "compat-1-18"] }
+
+[workspace]
+
