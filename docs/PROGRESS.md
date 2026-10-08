@@ -592,3 +592,9 @@ M3b should implement viewer and host session lifecycle state machines using fake
 - [VERIFIED-REVIEW] The owner-provided setup log shows the pinned Rust toolchain and target were already installed, then Rustup failed while checking its optional self-update manifest because the Mac connection reset. The macOS setup now passes Rustup's documented `--no-self-update` option to the pinned toolchain installation; it still resolves and installs the repository-pinned toolchain and Apple target.
 - [VERIFIED-RUN] `bash -n setup-macos.sh` passed using Git Bash on Windows. The setup installer itself was not executed here.
 - [HUMAN-PENDING] The updated script has not been run on Monterey. Pull or download the latest `main` source and rerun `setup-macos.sh`; later Cargo downloads/build steps may still need a stable network connection.
+
+### 2026-10-07 — Monterey host-agent compile diagnostics
+
+- [VERIFIED-REVIEW] The Mac build exposed a misplaced host-log statement inside `println!`, a missing `HostAction::InjectInput` route in the Mac runtime action match, and a missing monotonic timestamp argument to `on_encoder_rebuild_result`. Moved the log call, routed runtime-generated input through the existing bounded input worker, and passed `runner.now_us()` to the rebuild callback. The malformed macro had also caused the `allowlist_path` warning.
+- [VERIFIED-RUN] `cargo fmt --all -- --check` and `git diff --check` passed.
+- [UNVERIFIED] The Windows Apple-target check still stops in `openh264-sys2` because the Windows environment lacks an Apple-target C++ compiler. Re-run `setup-macos.sh` from the current `main` checkout on Monterey to confirm this host code compiles and reveal any additional target-only diagnostics.

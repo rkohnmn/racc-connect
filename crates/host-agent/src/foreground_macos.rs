@@ -5,7 +5,9 @@ use crate::control_server::{
     ControlSendHandle, HostAdapterEvent, HostControlServer, TailscaleAllowlistAuthorizer,
 };
 use crate::cursor_sender::{CursorNetworkTransport, CursorTransport};
-use crate::input_worker::{HostInputHandle, HostInputSession, HostInputWorker};
+use crate::input_worker::{
+    route_runtime_input_action, HostInputHandle, HostInputSession, HostInputWorker,
+};
 use crate::macos::local_ipc::{default_app_data_directory, MacHostIpcHandler, MacLocalIpcServer};
 use crate::macos_bounded_log::BoundedMacHostLog;
 use crate::macos_host_policy::{
@@ -180,8 +182,8 @@ pub fn run_foreground_host() -> Result<(), Box<dyn Error>> {
         display_map,
     );
 
-    println!(
     host_log.record("Mac host listener started")?;
+    println!(
         "Mac host listening on {}. Allowlist: {}",
         server.local_addr(),
         allowlist_path(&config_root).display()
@@ -543,6 +545,9 @@ fn handle_runtime_events(
                 HostAction::Capture(action) => execute_capture_action(action, runner)?,
                 HostAction::Encoder(action) => execute_encoder_action(action, runner)?,
                 HostAction::Quality(_) => {}
+                HostAction::InjectInput(input) => {
+                    route_runtime_input_action(&runner.input_handle, connection_id, input);
+                }
                 HostAction::Event(event) => {
                     if matches!(event, SessionEvent::CaptureLost(_) | SessionEvent::EncoderFailed | SessionEvent::ControlTimedOut | SessionEvent::SessionEnded) {
                         runner.active_epoch = None;
@@ -996,7 +1001,11 @@ fn execute_encoder_action(
             } else {
                 false
             };
-            let events = lock(&runner.runtime).on_encoder_rebuild_result(operation_id, success)?;
+            let events = lock(&runner.runtime).on_encoder_rebuild_result(
+                operation_id,
+                success,
+                runner.now_us(),
+            )?;
             handle_runtime_events(events, false, runner)?;
         }
         EncoderAction::SetPaused(paused) => {
