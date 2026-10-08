@@ -11,21 +11,32 @@ use std::{
     slice,
     sync::OnceLock,
 };
-use windows::core::Interface;
+use windows::core::{IUnknown, Interface};
 use windows::Win32::{
-    Foundation::RPC_E_CHANGED_MODE,
+    Foundation::{HMODULE, RPC_E_CHANGED_MODE},
+    Graphics::{
+        Direct3D::{D3D_DRIVER_TYPE_HARDWARE, D3D_FEATURE_LEVEL_11_0},
+        Direct3D11::{
+            D3D11CreateDevice, ID3D11Device, ID3D11DeviceContext, ID3D11Texture2D,
+            D3D11_CPU_ACCESS_READ, D3D11_CREATE_DEVICE_FLAG, D3D11_CREATE_DEVICE_VIDEO_SUPPORT,
+            D3D11_MAPPED_SUBRESOURCE, D3D11_MAP_READ, D3D11_SDK_VERSION, D3D11_TEXTURE2D_DESC,
+            D3D11_USAGE_STAGING,
+        },
+        Dxgi::{Common::DXGI_FORMAT_NV12, IDXGIAdapter},
+    },
     Media::MediaFoundation::{
-        IMF2DBuffer, IMF2DBuffer2, IMFActivate, IMFMediaBuffer, IMFMediaType, IMFSample,
-        IMFTransform, MF2DBuffer_LockFlags_Read, MFCreateMediaType, MFCreateMemoryBuffer,
-        MFCreateSample, MFMediaType_Video, MFStartup, MFTEnumEx, MFVideoFormat_H264,
-        MFVideoFormat_NV12, MFVideoInterlace_Progressive, MFSTARTUP_FULL,
-        MFT_CATEGORY_VIDEO_DECODER, MFT_ENUM_FLAG, MFT_ENUM_FLAG_HARDWARE,
-        MFT_ENUM_FLAG_SORTANDFILTER, MFT_ENUM_FLAG_SYNCMFT, MFT_MESSAGE_COMMAND_FLUSH,
-        MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, MFT_MESSAGE_NOTIFY_START_OF_STREAM,
-        MFT_OUTPUT_DATA_BUFFER, MFT_OUTPUT_DATA_BUFFER_INCOMPLETE,
-        MFT_OUTPUT_STREAM_PROVIDES_SAMPLES, MFT_REGISTER_TYPE_INFO, MF_E_TRANSFORM_NEED_MORE_INPUT,
-        MF_MT_DEFAULT_STRIDE, MF_MT_FRAME_RATE, MF_MT_FRAME_SIZE, MF_MT_INTERLACE_MODE,
-        MF_MT_MAJOR_TYPE, MF_MT_PIXEL_ASPECT_RATIO, MF_MT_SUBTYPE, MF_TRANSFORM_ASYNC, MF_VERSION,
+        IMF2DBuffer, IMF2DBuffer2, IMFActivate, IMFDXGIBuffer, IMFDXGIDeviceManager,
+        IMFMediaBuffer, IMFMediaType, IMFSample, IMFTransform, MF2DBuffer_LockFlags_Read,
+        MFCreateDXGIDeviceManager, MFCreateMediaType, MFCreateMemoryBuffer, MFCreateSample,
+        MFMediaType_Video, MFStartup, MFTEnumEx, MFVideoFormat_H264, MFVideoFormat_NV12,
+        MFVideoInterlace_Progressive, MFSTARTUP_FULL, MFT_CATEGORY_VIDEO_DECODER, MFT_ENUM_FLAG,
+        MFT_ENUM_FLAG_HARDWARE, MFT_ENUM_FLAG_SORTANDFILTER, MFT_ENUM_FLAG_SYNCMFT,
+        MFT_MESSAGE_COMMAND_FLUSH, MFT_MESSAGE_NOTIFY_BEGIN_STREAMING,
+        MFT_MESSAGE_NOTIFY_START_OF_STREAM, MFT_MESSAGE_SET_D3D_MANAGER, MFT_OUTPUT_DATA_BUFFER,
+        MFT_OUTPUT_DATA_BUFFER_INCOMPLETE, MFT_OUTPUT_STREAM_PROVIDES_SAMPLES,
+        MFT_REGISTER_TYPE_INFO, MF_E_TRANSFORM_NEED_MORE_INPUT, MF_MT_DEFAULT_STRIDE,
+        MF_MT_FRAME_RATE, MF_MT_FRAME_SIZE, MF_MT_INTERLACE_MODE, MF_MT_MAJOR_TYPE,
+        MF_MT_PIXEL_ASPECT_RATIO, MF_MT_SUBTYPE, MF_SA_D3D11_AWARE, MF_TRANSFORM_ASYNC, MF_VERSION,
     },
     System::Com::{CoInitializeEx, CoTaskMemFree, CoUninitialize, COINIT_MULTITHREADED},
 };
@@ -34,15 +45,18 @@ const MAX_MFT_CANDIDATES: u32 = 64;
 const MAX_OUTPUTS: usize = 8;
 const MAX_PENDING: usize = 8;
 const MAX_OUTPUT_BYTES: usize = MAX_NV12_FRAME_BYTES + 1080 * 512;
+const MAX_DXGI_ARRAY_SLICES: u32 = 64;
 const FRAME_TIME: i64 = 333_333;
 
-/// Windows Media Foundation H.264 decoder. Hardware-registered synchronous MFTs are tried
-/// first, followed by synchronous MFTs. This path does not attach a D3D device manager,
-/// does not implement DXVA surface readback, and cannot claim hardware acceleration.
-/// Asynchronous MFTs are not supported by this path.
+/// Windows Media Foundation H.264 decoder. D3D11-aware hardware MFTs are tried first with a
+/// DXGI device manager and bounded NV12 staging readback; the synchronous CPU-output MFT path is
+/// used when hardware negotiation or D3D11 surface output is unavailable. Asynchronous MFTs are
+/// not supported by this decoder.
 pub struct MediaFoundationDecoder {
     transform: Option<IMFTransform>,
     activation: Option<IMFActivate>,
+    dxva: Option<DxvaDevice>,
+    staging: Option<StagingTexture>,
     _com: ComApartment,
     reset: Option<StreamReset>,
     kind: DecoderKind,
@@ -61,6 +75,8 @@ impl MediaFoundationDecoder {
         Ok(Self {
             transform: None,
             activation: None,
+            dxva: None,
+            staging: None,
             _com: ComApartment::init()?,
             reset: None,
             kind: DecoderKind::MediaFoundation,
@@ -74,43 +90,58 @@ impl MediaFoundationDecoder {
         })
     }
     fn select(&mut self, reset: StreamReset) -> Result<(), DecodeError> {
-        let plans = [
-            (
-                MFT_ENUM_FLAG(MFT_ENUM_FLAG_HARDWARE.0 | MFT_ENUM_FLAG_SORTANDFILTER.0),
-                DecoderKind::WindowsMediaFoundationHardwareMft,
-            ),
-            (
-                MFT_ENUM_FLAG(MFT_ENUM_FLAG_SYNCMFT.0 | MFT_ENUM_FLAG_SORTANDFILTER.0),
-                DecoderKind::WindowsMediaFoundationSynchronousMft,
-            ),
-        ];
         let mut failures = Vec::new();
-        for (flags, kind) in plans {
-            let list = match enumerate(flags) {
-                Ok(v) => v,
-                Err(e) => {
-                    failures.push(e);
-                    continue;
-                }
-            };
-            for act in list.clones()? {
-                match configure(&act, reset) {
-                    Ok(c) => {
-                        self.transform = Some(c.transform);
-                        self.activation = Some(act);
-                        self.kind = kind;
-                        self.out_flags = c.flags;
-                        self.out_size = c.size;
-                        self.stride = c.stride;
+        let hardware_flags =
+            MFT_ENUM_FLAG(MFT_ENUM_FLAG_HARDWARE.0 | MFT_ENUM_FLAG_SORTANDFILTER.0);
+        match (create_dxva_device(), enumerate(hardware_flags)) {
+            (Ok(dxva), Ok(list)) => match list.clones() {
+                Ok(candidates) => {
+                    let (selected, rejected) = select_candidate(candidates, |activation| {
+                        configure(activation, reset, Some(&dxva.manager))
+                    });
+                    failures.extend(rejected);
+                    if let Some((activation, configured)) = selected {
+                        self.transform = Some(configured.transform);
+                        self.activation = Some(activation);
+                        self.dxva = Some(dxva);
+                        self.staging = None;
+                        self.kind = decoder_kind_for_path(true);
+                        self.out_flags = configured.flags;
+                        self.out_size = configured.size;
+                        self.stride = configured.stride;
                         return Ok(());
                     }
-                    Err(e) if failures.len() < 8 => failures.push(e),
-                    Err(_) => {}
                 }
-            }
+                Err(error) if failures.len() < 8 => failures.push(error.to_string()),
+                Err(_) => {}
+            },
+            (Err(error), _) | (_, Err(error)) if failures.len() < 8 => failures.push(error),
+            (Err(_), _) | (_, Err(_)) => {}
+        }
+
+        // A CPU-accessible output does not prove software decoding. This fallback is labeled as
+        // the synchronous CPU-output MFT path and is used only after D3D11 negotiation failed.
+        let flags = MFT_ENUM_FLAG(MFT_ENUM_FLAG_SYNCMFT.0 | MFT_ENUM_FLAG_SORTANDFILTER.0);
+        let list = enumerate(flags).map_err(|error| {
+            DecodeError::Backend(format!("no Media Foundation H.264 decoder: {error}"))
+        })?;
+        let candidates = list.clones()?;
+        let (selected, rejected) =
+            select_candidate(candidates, |activation| configure(activation, reset, None));
+        failures.extend(rejected);
+        if let Some((activation, configured)) = selected {
+            self.transform = Some(configured.transform);
+            self.activation = Some(activation);
+            self.dxva = None;
+            self.staging = None;
+            self.kind = decoder_kind_for_path(false);
+            self.out_flags = configured.flags;
+            self.out_size = configured.size;
+            self.stride = configured.stride;
+            return Ok(());
         }
         let why = if failures.is_empty() {
-            "no synchronous decoder MFT was found".to_owned()
+            "no D3D11-aware hardware MFT or synchronous CPU-output MFT was found".to_owned()
         } else {
             failures.join("; ")
         };
@@ -225,10 +256,22 @@ impl MediaFoundationDecoder {
         let r = self
             .reset
             .ok_or(DecodeError::InvalidConfig("decoder is not configured"))?;
-        // SAFETY: Sample is a live output from the configured MFT.
+        let (w, h) = (u32::from(r.width), u32::from(r.height));
+        if let Some(dxva) = self.dxva.as_ref() {
+            if let Ok(buffer) = single_sample_buffer(s) {
+                if let Ok(dxgi) = buffer.cast::<IMFDXGIBuffer>() {
+                    let (y, uv) = read_dxgi_nv12(dxva, &dxgi, &mut self.staging, w, h)?;
+                    return DecodedFrame::new(meta.epoch, meta.id, meta.capture, w, h, y, uv)
+                        .map(Some);
+                }
+            }
+            // Some registered transforms accept the D3D manager but still output CPU-accessible
+            // samples. Preserve the frame; the reported kind identifies the selected MFT class,
+            // which is documented not to prove DXVA use.
+        }
+        // SAFETY: Sample is a live output from a CPU-accessible Media Foundation transform.
         let b = unsafe { s.ConvertToContiguousBuffer() }
             .map_err(|e| mferr("convert output buffer", e))?;
-        let (w, h) = (u32::from(r.width), u32::from(r.height));
         let (y, uv) = match b.cast::<IMF2DBuffer2>() {
             Ok(two) => read_2d(&two, w, h)?,
             Err(_) => read_linear(&b, self.stride, w, h)?,
@@ -243,6 +286,8 @@ impl Decoder for MediaFoundationDecoder {
     fn configure(&mut self, r: StreamReset) -> Result<(), DecodeError> {
         self.transform = None;
         self.activation = None;
+        self.dxva = None;
+        self.staging = None;
         self.reset = None;
         self.configured = false;
         self.waiting = true;
@@ -324,6 +369,26 @@ struct Configured {
     size: u32,
     stride: Option<i32>,
 }
+struct DxvaDevice {
+    device: ID3D11Device,
+    context: ID3D11DeviceContext,
+    manager: IMFDXGIDeviceManager,
+}
+struct StagingTexture {
+    source: D3D11_TEXTURE2D_DESC,
+    texture: ID3D11Texture2D,
+}
+struct MappedTexture<'a> {
+    context: &'a ID3D11DeviceContext,
+    texture: &'a ID3D11Texture2D,
+    subresource: u32,
+}
+impl Drop for MappedTexture<'_> {
+    fn drop(&mut self) {
+        // SAFETY: This guard is constructed only after Map succeeds and unmaps that exact resource.
+        unsafe { self.context.Unmap(self.texture, self.subresource) };
+    }
+}
 fn metadata(q: &mut VecDeque<Pending>, s: &IMFSample) -> Option<Pending> {
     // SAFETY: The live output sample may contain its corresponding timestamp.
     if let Ok(t) = unsafe { s.GetSampleTime() } {
@@ -333,7 +398,11 @@ fn metadata(q: &mut VecDeque<Pending>, s: &IMFSample) -> Option<Pending> {
     }
     q.pop_front()
 }
-fn configure(a: &IMFActivate, r: StreamReset) -> Result<Configured, String> {
+fn configure(
+    a: &IMFActivate,
+    r: StreamReset,
+    dxva_manager: Option<&IMFDXGIDeviceManager>,
+) -> Result<Configured, String> {
     // SAFETY: Activation is live and returns an owned transform.
     let t: IMFTransform = unsafe { a.ActivateObject() }.map_err(|e| e.to_string())?;
     // SAFETY: The live transform returns an owned attributes interface.
@@ -341,6 +410,22 @@ fn configure(a: &IMFActivate, r: StreamReset) -> Result<Configured, String> {
     // SAFETY: MF_TRANSFORM_ASYNC is a standard scalar attribute.
     if unsafe { attrs.GetUINT32(&MF_TRANSFORM_ASYNC) }.unwrap_or(0) != 0 {
         return Err("asynchronous MFT unsupported".into());
+    }
+    if let Some(manager) = dxva_manager {
+        // A transform must explicitly advertise D3D11 awareness before receiving a device manager.
+        // SAFETY: MF_SA_D3D11_AWARE is a standard scalar transform attribute.
+        let d3d11_aware = unsafe { attrs.GetUINT32(&MF_SA_D3D11_AWARE) }.unwrap_or(0) != 0;
+        if !hardware_candidate_eligible(d3d11_aware, true) {
+            return Err("hardware MFT is not D3D11-aware".into());
+        }
+        // SAFETY: The manager remains owned by MediaFoundationDecoder for the transform lifetime.
+        unsafe {
+            t.ProcessMessage(
+                MFT_MESSAGE_SET_D3D_MANAGER,
+                Interface::as_raw(manager) as usize,
+            )
+        }
+        .map_err(|e| format!("set DXGI device manager: {e}"))?;
     }
     let input = make_type(r, &MFVideoFormat_H264)?;
     // SAFETY: Stream zero receives a live H.264 media type.
@@ -357,6 +442,10 @@ fn configure(a: &IMFActivate, r: StreamReset) -> Result<Configured, String> {
     }
     // SAFETY: The configured transform reports its output allocation.
     let info = unsafe { t.GetOutputStreamInfo(0) }.map_err(|e| e.to_string())?;
+    let provides_samples = info.dwFlags & (MFT_OUTPUT_STREAM_PROVIDES_SAMPLES.0 as u32) != 0;
+    if dxva_manager.is_some() && !hardware_candidate_eligible(true, provides_samples) {
+        return Err("D3D11 decoder does not provide its surface-backed output samples".into());
+    }
     let pixels = usize::from(r.width)
         .checked_mul(usize::from(r.height))
         .ok_or("NV12 dimension overflow")?;
@@ -377,6 +466,235 @@ fn configure(a: &IMFActivate, r: StreamReset) -> Result<Configured, String> {
         size: u32::try_from(size).map_err(|_| "output buffer size overflow")?,
         stride,
     })
+}
+fn hardware_candidate_eligible(d3d11_aware: bool, provides_samples: bool) -> bool {
+    d3d11_aware && provides_samples
+}
+fn decoder_kind_for_path(dxgi_surface_backed: bool) -> DecoderKind {
+    if dxgi_surface_backed {
+        DecoderKind::WindowsMediaFoundationHardwareMft
+    } else {
+        DecoderKind::WindowsMediaFoundationSynchronousMft
+    }
+}
+fn select_candidate<C, T>(
+    candidates: Vec<C>,
+    mut configure_candidate: impl FnMut(&C) -> Result<T, String>,
+) -> (Option<(C, T)>, Vec<String>) {
+    let mut failures = Vec::new();
+    for candidate in candidates {
+        match configure_candidate(&candidate) {
+            Ok(configured) => return (Some((candidate, configured)), failures),
+            Err(error) if failures.len() < 8 => failures.push(error),
+            Err(_) => {}
+        }
+    }
+    (None, failures)
+}
+fn create_dxva_device() -> Result<DxvaDevice, String> {
+    let (mut device, mut context) = (None, None);
+    let levels = [D3D_FEATURE_LEVEL_11_0];
+    let flags = D3D11_CREATE_DEVICE_FLAG(D3D11_CREATE_DEVICE_VIDEO_SUPPORT.0);
+    // SAFETY: The adapter is selected by the system; output slots and feature levels are valid.
+    unsafe {
+        D3D11CreateDevice(
+            None::<&IDXGIAdapter>,
+            D3D_DRIVER_TYPE_HARDWARE,
+            HMODULE::default(),
+            flags,
+            Some(&levels),
+            D3D11_SDK_VERSION,
+            Some(&mut device),
+            None,
+            Some(&mut context),
+        )
+    }
+    .map_err(|error| format!("create D3D11 decode device: {error}"))?;
+    let device = device.ok_or_else(|| "D3D11 returned no decode device".to_owned())?;
+    let context = context.ok_or_else(|| "D3D11 returned no immediate context".to_owned())?;
+    let (mut token, mut manager) = (0, None);
+    // SAFETY: Both output locations are writable; Media Foundation returns an owned COM manager.
+    unsafe { MFCreateDXGIDeviceManager(&mut token, &mut manager) }
+        .map_err(|error| format!("create DXGI device manager: {error}"))?;
+    let manager = manager.ok_or_else(|| "Media Foundation returned no DXGI manager".to_owned())?;
+    // SAFETY: The live manager receives the live D3D11 device and its own reset token.
+    unsafe { manager.ResetDevice(&device, token) }
+        .map_err(|error| format!("bind D3D11 device to DXGI manager: {error}"))?;
+    Ok(DxvaDevice {
+        device,
+        context,
+        manager,
+    })
+}
+fn single_sample_buffer(sample: &IMFSample) -> Result<IMFMediaBuffer, DecodeError> {
+    // SAFETY: The output sample is live and returns an initialized count.
+    let count = unsafe { sample.GetBufferCount() }
+        .map_err(|error| mferr("get decoder output buffer count", error))?;
+    if count != 1 {
+        return Err(DecodeError::InvalidFrame(
+            "DXVA output sample must contain one NV12 surface",
+        ));
+    }
+    // SAFETY: Index zero is valid because the sample count was checked above.
+    unsafe { sample.GetBufferByIndex(0) }
+        .map_err(|error| mferr("get decoder output surface", error))
+}
+fn read_dxgi_nv12(
+    dxva: &DxvaDevice,
+    buffer: &IMFDXGIBuffer,
+    staging: &mut Option<StagingTexture>,
+    width: u32,
+    height: u32,
+) -> Result<(Vec<u8>, Vec<u8>), DecodeError> {
+    // SAFETY: The sample buffer is a live Media Foundation DXGI surface wrapper.
+    let subresource = unsafe { buffer.GetSubresourceIndex() }
+        .map_err(|error| mferr("get DXVA output subresource", error))?;
+    let mut raw_texture = null_mut();
+    // SAFETY: GetResource writes a COM interface pointer for the requested ID3D11Texture2D.
+    unsafe { buffer.GetResource(&ID3D11Texture2D::IID, &mut raw_texture) }
+        .map_err(|error| mferr("get DXVA output texture", error))?;
+    if raw_texture.is_null() {
+        return Err(DecodeError::InvalidFrame("null DXVA output texture"));
+    }
+    // SAFETY: GetResource succeeded and transferred one owned reference to this interface pointer.
+    let source = unsafe { ID3D11Texture2D::from_raw(raw_texture) };
+    let mut source_desc = D3D11_TEXTURE2D_DESC::default();
+    // SAFETY: GetDesc initializes the writable descriptor for the live texture.
+    unsafe { source.GetDesc(&mut source_desc) };
+    validate_dxgi_output(&source_desc, subresource, width, height)?;
+
+    // Verify this surface came from the manager's device before issuing a D3D11 copy.
+    // SAFETY: Both live textures/devices expose owned ID3D11Device interfaces.
+    let source_device =
+        unsafe { source.GetDevice() }.map_err(|error| mferr("get DXVA surface device", error))?;
+    let source_identity = source_device
+        .cast::<IUnknown>()
+        .map_err(|error| mferr("query DXVA surface device identity", error))?;
+    let expected_identity = dxva
+        .device
+        .cast::<IUnknown>()
+        .map_err(|error| mferr("query decode device identity", error))?;
+    if Interface::as_raw(&source_identity) != Interface::as_raw(&expected_identity) {
+        return Err(DecodeError::InvalidFrame(
+            "DXVA output surface belongs to another D3D11 device",
+        ));
+    }
+
+    let staging_texture = match staging.as_ref() {
+        Some(cached) if cached.source == source_desc => cached.texture.clone(),
+        _ => {
+            let mut desc = source_desc;
+            desc.Usage = D3D11_USAGE_STAGING;
+            desc.BindFlags = 0;
+            desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ.0 as u32;
+            desc.MiscFlags = 0;
+            let mut texture = None;
+            // SAFETY: Descriptor is copied from the source and changed to a bounded readback target.
+            unsafe { dxva.device.CreateTexture2D(&desc, None, Some(&mut texture)) }
+                .map_err(|error| mferr("create NV12 staging texture", error))?;
+            let texture = texture.ok_or(DecodeError::InvalidFrame(
+                "D3D11 returned no staging texture",
+            ))?;
+            *staging = Some(StagingTexture {
+                source: source_desc,
+                texture: texture.clone(),
+            });
+            texture
+        }
+    };
+    // SAFETY: The cached staging texture mirrors the source subresource layout and both belong to
+    // the verified same device. One subresource is copied; this decode context is thread-confined.
+    unsafe {
+        dxva.context.CopySubresourceRegion(
+            &staging_texture,
+            subresource,
+            0,
+            0,
+            0,
+            &source,
+            subresource,
+            None,
+        )
+    };
+    let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
+    // SAFETY: The staging resource is CPU-readable and Map initializes the local mapping record.
+    unsafe {
+        dxva.context.Map(
+            &staging_texture,
+            subresource,
+            D3D11_MAP_READ,
+            0,
+            Some(&mut mapped),
+        )
+    }
+    .map_err(|error| mferr("map NV12 staging texture", error))?;
+    let _mapped = MappedTexture {
+        context: &dxva.context,
+        texture: &staging_texture,
+        subresource,
+    };
+    let pitch = usize::try_from(mapped.RowPitch)
+        .map_err(|_| DecodeError::InvalidFrame("DXVA row pitch overflow"))?;
+    let length = nv12_readback_length(pitch, width, height)?;
+    if mapped.pData.is_null() {
+        return Err(DecodeError::InvalidFrame(
+            "invalid DXVA mapped NV12 surface",
+        ));
+    }
+    // SAFETY: D3D11 Map keeps pData valid for the documented NV12 row extent and the checked pitch
+    // and height bound this read. The guard unmaps the texture on every return path.
+    let bytes = unsafe { slice::from_raw_parts(mapped.pData.cast::<u8>(), length) };
+    copy_planes(bytes, 0, pitch, width, height)
+}
+fn validate_dxgi_output(
+    desc: &D3D11_TEXTURE2D_DESC,
+    subresource: u32,
+    width: u32,
+    height: u32,
+) -> Result<(), DecodeError> {
+    if desc.Width != width
+        || desc.Height != height
+        || desc.Format != DXGI_FORMAT_NV12
+        || desc.SampleDesc.Count != 1
+        || desc.MipLevels != 1
+        || desc.ArraySize == 0
+        || desc.ArraySize > MAX_DXGI_ARRAY_SLICES
+        || subresource >= desc.ArraySize
+    {
+        return Err(DecodeError::InvalidFrame(
+            "unsupported DXVA NV12 texture layout",
+        ));
+    }
+    let minimum_pitch =
+        usize::try_from(width).map_err(|_| DecodeError::InvalidFrame("DXVA width overflow"))?;
+    let minimum_bytes = minimum_pitch
+        .checked_mul(usize::try_from(height).unwrap_or(usize::MAX))
+        .and_then(|luma| luma.checked_add(luma / 2))
+        .ok_or(DecodeError::InvalidFrame("DXVA output size overflow"))?;
+    if minimum_bytes > MAX_NV12_FRAME_BYTES {
+        return Err(DecodeError::InvalidFrame("DXVA frame exceeds maximum"));
+    }
+    Ok(())
+}
+fn nv12_readback_length(pitch: usize, width: u32, height: u32) -> Result<usize, DecodeError> {
+    let width =
+        usize::try_from(width).map_err(|_| DecodeError::InvalidFrame("DXVA width overflow"))?;
+    if pitch < width {
+        return Err(DecodeError::InvalidFrame(
+            "DXVA row pitch is smaller than width",
+        ));
+    }
+    let height =
+        usize::try_from(height).map_err(|_| DecodeError::InvalidFrame("DXVA height overflow"))?;
+    let rows = height
+        .checked_add(height / 2)
+        .ok_or(DecodeError::InvalidFrame("DXVA plane row count overflow"))?;
+    pitch
+        .checked_mul(rows)
+        .filter(|length| *length <= MAX_OUTPUT_BYTES)
+        .ok_or(DecodeError::InvalidFrame(
+            "DXVA readback exceeds the output bound",
+        ))
 }
 fn make_type(r: StreamReset, subtype: &windows::core::GUID) -> Result<IMFMediaType, String> {
     // SAFETY: Factory returns a new owned media type.
@@ -676,6 +994,75 @@ fn mferr(label: &str, e: windows::core::Error) -> DecodeError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn dxva_candidate_requires_d3d11_awareness_and_surface_samples() {
+        assert!(hardware_candidate_eligible(true, true));
+        assert!(!hardware_candidate_eligible(false, true));
+        assert!(!hardware_candidate_eligible(true, false));
+        assert!(!hardware_candidate_eligible(false, false));
+    }
+
+    #[test]
+    fn candidate_selection_tries_fallback_after_dxva_rejection() {
+        let (selected, rejected) = select_candidate(vec!["first", "second"], |candidate| {
+            if *candidate == "second" {
+                Ok(DecoderKind::WindowsMediaFoundationHardwareMft)
+            } else {
+                Err("candidate lacks usable D3D11 output".to_owned())
+            }
+        });
+        assert_eq!(
+            selected,
+            Some(("second", DecoderKind::WindowsMediaFoundationHardwareMft))
+        );
+        assert_eq!(rejected, ["candidate lacks usable D3D11 output"]);
+
+        let (selected, _) = select_candidate(vec!["cpu-fallback"], |candidate| {
+            if *candidate == "cpu-fallback" {
+                Ok(decoder_kind_for_path(false))
+            } else {
+                Err("unusable".to_owned())
+            }
+        });
+        assert_eq!(
+            selected,
+            Some((
+                "cpu-fallback",
+                DecoderKind::WindowsMediaFoundationSynchronousMft
+            ))
+        );
+    }
+
+    #[test]
+    fn dxva_readback_bound_accounts_for_padded_rows() {
+        assert_eq!(nv12_readback_length(672, 640, 480), Ok(483_840));
+        assert!(nv12_readback_length(639, 640, 480).is_err());
+        assert!(nv12_readback_length(4096, 1920, 1080).is_err());
+    }
+
+    #[test]
+    fn dxva_output_requires_matching_bounded_nv12_surface() {
+        let mut desc = D3D11_TEXTURE2D_DESC {
+            Width: 640,
+            Height: 480,
+            MipLevels: 1,
+            ArraySize: 8,
+            Format: DXGI_FORMAT_NV12,
+            SampleDesc: windows::Win32::Graphics::Dxgi::Common::DXGI_SAMPLE_DESC {
+                Count: 1,
+                Quality: 0,
+            },
+            ..D3D11_TEXTURE2D_DESC::default()
+        };
+        assert_eq!(validate_dxgi_output(&desc, 7, 640, 480), Ok(()));
+        assert!(validate_dxgi_output(&desc, 8, 640, 480).is_err());
+        desc.ArraySize = MAX_DXGI_ARRAY_SLICES + 1;
+        assert!(validate_dxgi_output(&desc, 0, 640, 480).is_err());
+        desc.ArraySize = 1;
+        desc.Width = 1920;
+        assert!(validate_dxgi_output(&desc, 0, 640, 480).is_err());
+    }
+
     #[test]
     fn copies_padded_nv12_rows() {
         let s = [

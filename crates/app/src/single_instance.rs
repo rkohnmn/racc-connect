@@ -226,6 +226,7 @@ mod platform {
                     continue;
                 }
                 if error != ERROR_PIPE_LISTENING {
+                    eprintln!("single-instance pipe listener stopped after ConnectNamedPipe error {error}");
                     break;
                 }
                 thread::sleep(Duration::from_millis(10));
@@ -237,6 +238,7 @@ mod platform {
 
     pub(super) fn request_show(settings_path: &Path) -> io::Result<bool> {
         let name = pipe_name(settings_path);
+        let mut last_error = 0;
         for _ in 0..40 {
             // SAFETY: name is a NUL-terminated UTF-16 pipe name. The client requests write-only
             // access to the local endpoint; no network interface is involved.
@@ -255,7 +257,7 @@ mod platform {
                 let command = SHOW_WINDOW;
                 let mut written = 0_u32;
                 // SAFETY: pipe is a valid client handle and command/written are valid buffers.
-                let sent = unsafe {
+                let write_succeeded = unsafe {
                     WriteFile(
                         pipe,
                         (&command as *const u8).cast(),
@@ -263,15 +265,31 @@ mod platform {
                         &mut written,
                         null_mut(),
                     )
-                } != 0
-                    && written == 1;
+                } != 0;
+                // SAFETY: Capture this thread's WriteFile failure before CloseHandle can change it.
+                let write_error = if write_succeeded {
+                    0
+                } else {
+                    unsafe { GetLastError() }
+                };
                 // SAFETY: this client owns the handle returned by CreateFileW.
                 let _ = unsafe { CloseHandle(pipe) };
-                return Ok(sent);
+                if write_succeeded && written == 1 {
+                    return Ok(true);
+                }
+                if write_succeeded {
+                    return Err(io::Error::new(
+                        io::ErrorKind::WriteZero,
+                        "short write while sending show-window request",
+                    ));
+                }
+                return Err(io::Error::from_raw_os_error(write_error as i32));
             }
+            // SAFETY: GetLastError reads the current thread's CreateFileW failure status.
+            last_error = unsafe { GetLastError() };
             thread::sleep(Duration::from_millis(25));
         }
-        Ok(false)
+        Err(io::Error::from_raw_os_error(last_error as i32))
     }
 
     fn pipe_name(settings_path: &Path) -> Vec<u16> {

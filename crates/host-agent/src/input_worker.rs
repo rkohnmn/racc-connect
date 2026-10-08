@@ -38,6 +38,30 @@ impl HostInputSession {
             topology,
         }
     }
+
+    /// Builds a replacement input snapshot only when its selected display remains compatible.
+    pub(super) fn with_updated_topology(
+        &self,
+        previous: &Topology,
+        topology: Topology,
+    ) -> Option<Self> {
+        if racc_topology::requires_stream_reset(
+            &racc_topology::diff_topologies(previous, &topology),
+            Some(self.display_id),
+        ) || !topology
+            .displays()
+            .iter()
+            .any(|display| display.id() == self.display_id && display.flags().available())
+        {
+            return None;
+        }
+        Some(Self::new(
+            self.connection_id,
+            self.epoch,
+            self.display_id,
+            topology,
+        ))
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -387,6 +411,72 @@ mod tests {
                 pressed: true,
             }]
         );
+    }
+
+    #[test]
+    fn topology_rebase_preserves_session_when_selected_display_remains_compatible() {
+        let (previous, display_id) = topology();
+        let session = HostInputSession::new(11, 4, display_id, previous.clone());
+        let updated = Topology::new(
+            2,
+            vec![
+                Display::new(
+                    display_id,
+                    "renamed display",
+                    -2560,
+                    0,
+                    1920,
+                    1080,
+                    1000,
+                    60_000,
+                    DisplayFlags::new(true, true, true, false),
+                ),
+                Display::new(
+                    DisplayId::new(8).unwrap_or_else(|| unreachable!("test display id")),
+                    "new display",
+                    -640,
+                    1080,
+                    1280,
+                    720,
+                    1000,
+                    60_000,
+                    DisplayFlags::new(false, true, true, false),
+                ),
+            ],
+            None,
+        )
+        .unwrap_or_else(|_| unreachable!("test topology"));
+
+        let rebased = session
+            .with_updated_topology(&previous, updated.clone())
+            .unwrap_or_else(|| unreachable!("compatible selected display"));
+        assert_eq!(rebased.connection_id, 11);
+        assert_eq!(rebased.epoch, 4);
+        assert_eq!(rebased.display_id, display_id);
+        assert_eq!(rebased.topology, updated);
+    }
+
+    #[test]
+    fn topology_rebase_waits_for_reset_when_selected_display_geometry_changes() {
+        let (previous, display_id) = topology();
+        let session = HostInputSession::new(11, 4, display_id, previous.clone());
+        let updated = Topology::new(
+            2,
+            vec![Display::new(
+                display_id,
+                "test display",
+                -1920,
+                0,
+                1280,
+                720,
+                1000,
+                60_000,
+                DisplayFlags::new(true, true, true, false),
+            )],
+            None,
+        )
+        .unwrap_or_else(|_| unreachable!("test topology"));
+        assert!(session.with_updated_topology(&previous, updated).is_none());
     }
 
     #[test]

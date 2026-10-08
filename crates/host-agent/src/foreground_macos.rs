@@ -14,6 +14,7 @@ use crate::macos_host_policy::{
     hidden_cursor_update, measured_bitrate_kbps, stream_dimensions, MAC_HOST_DEFAULT_MAX_HEIGHT,
 };
 use crate::macos_system_metrics::SystemCpuSampler;
+use crate::topology_watch::{changed_topology, TOPOLOGY_POLL_INTERVAL};
 use racc_capture::macos::{
     enumerate_displays, screen_recording_access, MacCaptureBackend, MacCaptureConfig,
     MacCaptureError, MacCaptureEvent, MacCaptureNotice, MacDisplay, ScreenRecordingAccess,
@@ -217,6 +218,7 @@ pub fn run_foreground_host() -> Result<(), Box<dyn Error>> {
                 handle_capture_event(event, &mut runner)?;
             }
         }
+        refresh_topology_if_due(&mut runner)?;
         handle_sender_keyframe_requests(&mut runner);
         poll_host_clipboard(&mut runner);
         send_periodic_stats(&mut runner);
@@ -325,6 +327,7 @@ struct MacHost {
     last_stats_bytes_total: u64,
     stats_bytes_total: u64,
     cpu_sampler: SystemCpuSampler,
+    last_topology_scan: Instant,
 }
 
 impl MacHost {
@@ -372,6 +375,7 @@ impl MacHost {
             last_stats_bytes_total: 0,
             stats_bytes_total: 0,
             cpu_sampler: SystemCpuSampler::new(),
+            last_topology_scan: Instant::now(),
         }
     }
 
@@ -783,10 +787,32 @@ fn handle_control_send(
 ) -> Result<(), Box<dyn Error>> {
     match message {
         ControlMessage::TopologyAnnounce(announced) => {
-            runner.input_handle.deactivate();
             match Topology::from_proto(&announced) {
-                Ok(topology) => runner.input_topology = Some(topology),
+                Ok(topology) => {
+                    let current_display = lock(&runner.runtime).status().current_display;
+                    let input_session = runner
+                        .active_epoch
+                        .zip(current_display)
+                        .filter(|_| runner.active_connection_id == Some(connection_id))
+                        .and_then(|(epoch, display_id)| {
+                            let previous = runner.input_topology.as_ref()?;
+                            HostInputSession::new(
+                                connection_id,
+                                epoch,
+                                display_id,
+                                previous.clone(),
+                            )
+                            .with_updated_topology(previous, topology.clone())
+                        });
+                    if let Some(session) = input_session {
+                        runner.input_handle.activate_session(session);
+                    } else {
+                        runner.input_handle.deactivate();
+                    }
+                    runner.input_topology = Some(topology);
+                }
                 Err(error) => {
+                    runner.input_handle.deactivate();
                     runner.input_topology = None;
                     eprintln!(
                         "host topology announcement could not be used for input mapping: {error}"
@@ -1151,14 +1177,40 @@ fn handle_capture_event(
 
 fn refresh_topology(runner: &mut MacHost) -> Result<(), Box<dyn Error>> {
     let displays = enumerate_displays()?;
-    let next_revision = runner.topology.revision().wrapping_add(1).max(1);
-    let topology = Topology::new(
-        next_revision,
+    refresh_topology_from_displays(displays, runner)
+}
+
+fn refresh_topology_if_due(runner: &mut MacHost) -> Result<(), Box<dyn Error>> {
+    if runner.last_topology_scan.elapsed() < TOPOLOGY_POLL_INTERVAL {
+        return Ok(());
+    }
+    runner.last_topology_scan = Instant::now();
+    match enumerate_displays() {
+        Ok(displays) if !displays.is_empty() => refresh_topology_from_displays(displays, runner),
+        Ok(_) => {
+            eprintln!("macOS returned no active displays during topology refresh; keeping the last topology.");
+            Ok(())
+        }
+        Err(error) => {
+            eprintln!("macOS display topology refresh failed; keeping the last topology: {error}");
+            Ok(())
+        }
+    }
+}
+
+fn refresh_topology_from_displays(
+    displays: Vec<MacDisplay>,
+    runner: &mut MacHost,
+) -> Result<(), Box<dyn Error>> {
+    if displays.is_empty() {
+        return Ok(());
+    }
+    let changed = changed_topology(
+        &runner.topology,
         displays
             .iter()
-            .map(|d| d.captured.display.clone())
+            .map(|display| display.captured.display.clone())
             .collect(),
-        None,
     )?;
     runner.display_map = displays
         .into_iter()
@@ -1176,9 +1228,10 @@ fn refresh_topology(runner: &mut MacHost) -> Result<(), Box<dyn Error>> {
         })
         .collect::<Result<Vec<_>, _>>()?;
     runner.input_injector.replace_display_maps(input_maps)?;
+    let Some(topology) = changed else {
+        return Ok(());
+    };
     runner.topology = topology.clone();
-    runner.input_topology = Some(topology.clone());
-    runner.input_handle.deactivate();
     let events = lock(&runner.runtime).on_topology_changed(topology, runner.now_us())?;
     handle_runtime_events(events, false, runner)
 }

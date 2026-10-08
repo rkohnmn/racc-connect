@@ -9,6 +9,7 @@ use crate::input_worker::{
     route_runtime_input_action, HostInputHandle, HostInputSession, HostInputWorker,
 };
 use crate::stream_dispatch::{dispatch_frame, DispatchError, FrameEncoder};
+use crate::topology_watch::{changed_topology, TOPOLOGY_POLL_INTERVAL};
 use crate::windows::local_ipc::{run_local_ipc_server, WindowsHostIpcHandler};
 use crate::windows::SystemCpuSampler;
 use racc_capture::windows::WindowsCaptureBackend;
@@ -109,7 +110,7 @@ fn run_foreground_host_inner(stop_signal: Option<Receiver<()>>) -> Result<(), Bo
 
     let runtime = Arc::new(Mutex::new(HostRuntime::new(
         capabilities,
-        topology,
+        topology.clone(),
         CONTROL_PORT,
         HostConfig::default(),
     )?));
@@ -167,6 +168,8 @@ fn run_foreground_host_inner(stop_signal: Option<Receiver<()>>) -> Result<(), Bo
         clipboard: None,
         active_connection_id: None,
         display_refresh_mhz,
+        topology,
+        last_topology_scan: Instant::now(),
         cpu_sampler: SystemCpuSampler::default(),
         last_stats_report: Instant::now(),
         last_stats_bytes_total: 0,
@@ -217,6 +220,7 @@ fn run_foreground_host_inner(stop_signal: Option<Receiver<()>>) -> Result<(), Bo
             Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
+        refresh_topology_if_due(&mut runner)?;
         if runner.capture_running {
             match runner.capture.poll_event(CAPTURE_POLL_INTERVAL) {
                 Ok(Some(event)) => handle_capture_event(event, &mut runner)?,
@@ -320,7 +324,8 @@ struct ForegroundHost {
     input_handle: HostInputHandle,
     cursor_dispatcher: HostCursorDispatcher,
     cursor_transport: Option<CursorNetworkTransport>,
-    // Last topology announced by HostRuntime. No live capture topology-change event source is wired yet.
+    // Last OS topology snapshot; the input topology follows successful host announcements.
+    topology: Topology,
     input_topology: Option<Topology>,
     clipboard: Option<HostClipboardBridge>,
     active_connection_id: Option<HostConnectionId>,
@@ -345,12 +350,54 @@ struct ForegroundHost {
     pending_bitrate: Option<u32>,
     started_at: Instant,
     last_tick: Instant,
+    last_topology_scan: Instant,
 }
 
 impl ForegroundHost {
     fn now_us(&self) -> u64 {
         u64::try_from(self.started_at.elapsed().as_micros()).unwrap_or(u64::MAX)
     }
+}
+
+fn refresh_topology_if_due(runner: &mut ForegroundHost) -> Result<(), Box<dyn Error>> {
+    if runner.last_topology_scan.elapsed() < TOPOLOGY_POLL_INTERVAL {
+        return Ok(());
+    }
+    runner.last_topology_scan = Instant::now();
+    let displays = match runner.capture.enumerate_displays() {
+        Ok(displays) if !displays.is_empty() => displays,
+        Ok(_) => {
+            eprintln!("Windows returned no active displays during topology refresh; keeping the last topology.");
+            return Ok(());
+        }
+        Err(error) => {
+            eprintln!(
+                "Windows display topology refresh failed; keeping the last topology: {error}"
+            );
+            return Ok(());
+        }
+    };
+    let display_values = displays
+        .iter()
+        .map(|display| display.display.clone())
+        .collect::<Vec<_>>();
+    let topology = match changed_topology(&runner.topology, display_values) {
+        Ok(Some(topology)) => topology,
+        Ok(None) => return Ok(()),
+        Err(error) => {
+            eprintln!(
+                "Windows returned an invalid display topology; keeping the last topology: {error}"
+            );
+            return Ok(());
+        }
+    };
+    runner.display_refresh_mhz = displays
+        .iter()
+        .map(|display| (display.display.id(), display.display.refresh_mhz()))
+        .collect();
+    runner.topology = topology.clone();
+    let events = lock(&runner.runtime).on_topology_changed(topology, runner.now_us())?;
+    handle_runtime_events(events, false, runner)
 }
 
 struct EncoderRequest {
@@ -872,11 +919,43 @@ fn handle_control_send(
 ) {
     let message = match message {
         ControlMessage::TopologyAnnounce(announced) => {
-            runner.input_handle.deactivate();
-            runner.cursor_dispatcher.deactivate();
             match Topology::from_proto(&announced) {
-                Ok(topology) => runner.input_topology = Some(topology),
+                Ok(topology) => {
+                    let current_display = lock(&runner.runtime).status().current_display;
+                    let active_mapping = runner
+                        .active_epoch
+                        .zip(current_display)
+                        .filter(|_| runner.active_connection_id == Some(connection_id));
+                    let input_session = active_mapping.and_then(|(epoch, display_id)| {
+                        let previous = runner.input_topology.as_ref()?;
+                        HostInputSession::new(connection_id, epoch, display_id, previous.clone())
+                            .with_updated_topology(previous, topology.clone())
+                    });
+                    if let Some(session) = input_session {
+                        runner.input_handle.activate_session(session);
+                        if let Some((epoch, display_id)) = active_mapping {
+                            if let Some(display) = topology
+                                .displays()
+                                .iter()
+                                .find(|display| display.id() == display_id)
+                            {
+                                let _ = runner.cursor_dispatcher.update_origin(
+                                    connection_id,
+                                    epoch,
+                                    display_id,
+                                    display.origin(),
+                                );
+                            }
+                        }
+                    } else {
+                        runner.input_handle.deactivate();
+                        runner.cursor_dispatcher.deactivate();
+                    }
+                    runner.input_topology = Some(topology);
+                }
                 Err(error) => {
+                    runner.input_handle.deactivate();
+                    runner.cursor_dispatcher.deactivate();
                     runner.input_topology = None;
                     eprintln!(
                         "host topology announcement could not be used for input mapping: {error}"

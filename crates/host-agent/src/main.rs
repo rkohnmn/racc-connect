@@ -8,6 +8,7 @@ mod local_ipc;
 #[cfg(any(windows, test))]
 mod stream_dispatch;
 pub mod supervisor;
+mod topology_watch;
 
 #[cfg(target_os = "macos")]
 mod foreground_macos;

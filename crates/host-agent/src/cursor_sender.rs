@@ -131,6 +131,27 @@ impl HostCursorDispatcher {
         self.active = None;
         self.announced = None;
     }
+    /// Updates cursor coordinates after a compatible topology change without changing epoch.
+    pub fn update_origin(
+        &mut self,
+        connection_id: HostConnectionId,
+        epoch: u16,
+        display_id: DisplayId,
+        origin: (i32, i32),
+    ) -> bool {
+        let Some(mut session) = self.active else {
+            return false;
+        };
+        if session.connection_id != connection_id
+            || session.epoch != epoch
+            || session.display_id != display_id
+        {
+            return false;
+        }
+        session.origin = origin;
+        self.active = Some(session);
+        true
+    }
     /// Starts a confirmed stream epoch and writes any cached shape before enabling UDP updates.
     pub fn activate<T: CursorTransport + ?Sized>(
         &mut self,
@@ -447,6 +468,49 @@ mod tests {
             Ok(CursorDispatch::Suppressed)
         ));
         assert!(t.updates.is_empty());
+    }
+
+    #[test]
+    fn compatible_topology_origin_update_keeps_cursor_active_and_remaps_position() {
+        let mut dispatcher = HostCursorDispatcher::new();
+        let mut transport = FakeTransport::default();
+        dispatcher
+            .shape_changed(
+                shape(CaptureBlendMode::PremultipliedAlpha),
+                None::<&mut FakeTransport>,
+            )
+            .expect("shape valid");
+        dispatcher
+            .activate(4, 9, display(7), (-1920, 80), &mut transport)
+            .expect("shape announced");
+
+        assert!(dispatcher.update_origin(4, 9, display(7), (-2560, 120)));
+        assert!(!dispatcher.update_origin(4, 8, display(7), (0, 0)));
+        let sent = dispatcher
+            .position(
+                4,
+                9,
+                display(7),
+                CursorPosition {
+                    x: -2500,
+                    y: 170,
+                    visible: true,
+                },
+                &mut transport,
+            )
+            .expect("position sent");
+        assert_eq!(
+            sent,
+            CursorDispatch::Sent(CursorUpdate {
+                epoch: 9,
+                shape_id: transport.shapes[0].1.shape_id,
+                x: 60,
+                y: 50,
+                visible: true,
+            })
+        );
+        assert_eq!(transport.shapes.len(), 1);
+        assert_eq!(transport.updates.len(), 1);
     }
     #[test]
     fn invalid_dimension_payload_and_hotspot_are_rejected() {
