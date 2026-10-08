@@ -7,6 +7,13 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 scripts/check-layering.sh
 scripts/check-features.sh
+python3 scripts/gen-notices.py --check
+python3 scripts/test_gen_notices.py
+python3 tools/icons/test_generate_icons.py
+python3 scripts/test_package_artifacts.py
+python3 scripts/test_write_sha256.py
+python3 scripts/test_hygiene_check.py
+python3 scripts/hygiene_check.py
 
 if command -v cargo-deny >/dev/null 2>&1; then
     # Check both supported release targets without changing the repository policy.

@@ -22,7 +22,6 @@ WizardStyle=modern
 UninstallDisplayIcon={app}\racc-app.exe
 
 [Tasks]
-Name: "appautostart"; Description: "Start Racc Connect when I sign in"; GroupDescription: "Startup options:"; Flags: unchecked
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional icons:"
 
 [Files]
@@ -38,9 +37,7 @@ Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile
 Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -Command ""Start-Service -Name 'RaccConnectHost'"""; StatusMsg: "Starting the host service..."; Flags: runhidden waituntilterminated
 Filename: "{app}\racc-app.exe"; Description: "Launch Racc Connect"; Flags: postinstall nowait skipifsilent
 
-[Registry]
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "RaccConnect"; ValueData: """{app}\racc-app.exe"""; Tasks: appautostart; Flags: uninsdeletevalue
-
 [UninstallRun]
 Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\scripts\firewall-rules-remove.ps1"""; Flags: runhidden waituntilterminated
 Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\scripts\uninstall-service.ps1"""; Flags: runhidden waituntilterminated
+Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\scripts\remove-app-autostart.ps1"""; Flags: runhidden waituntilterminated

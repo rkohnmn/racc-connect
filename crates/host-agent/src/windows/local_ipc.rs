@@ -133,6 +133,8 @@ impl IpcRequestHandler for WindowsHostIpcHandler {
                         connected_viewers: u32::from(status.viewer_connected),
                         pending_approvals: u32::try_from(self.pending_snapshot().len())
                             .unwrap_or(u32::MAX),
+                        screen_recording_granted: None,
+                        accessibility_granted: None,
                     },
                 }
             }
@@ -741,6 +743,8 @@ mod tests {
                     helper_state: HelperState::Running,
                     connected_viewers: 0,
                     pending_approvals: 0,
+                    screen_recording_granted: None,
+                    accessibility_granted: None,
                 }
             }
         ));

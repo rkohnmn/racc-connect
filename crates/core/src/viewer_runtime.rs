@@ -2417,18 +2417,22 @@ mod tests {
                 33_333,
             )
             .map_err(|error| error.to_string())?;
-            sender
-                .send_frame(racc_net::SenderFrame {
-                    epoch: 1,
-                    frame_id: 1,
-                    keyframe: true,
-                    config: true,
-                    capture_ts_us: 10,
-                    bytes: vec![
-                        0, 0, 0, 1, 0x67, 0x42, 0, 0x1e, 0, 0, 1, 0x68, 0xce, 0, 0, 1, 0x65, 0x88,
-                    ],
-                })
-                .map_err(|error| error.to_string())?;
+            for frame_id in 1..=5 {
+                sender
+                    .send_frame(racc_net::SenderFrame {
+                        epoch: 1,
+                        frame_id,
+                        keyframe: true,
+                        config: true,
+                        capture_ts_us: 10 + frame_id,
+                        bytes: vec![
+                            0, 0, 0, 1, 0x67, 0x42, 0, 0x1e, 0, 0, 1, 0x68, 0xce, 0, 0, 1, 0x65,
+                            0x88,
+                        ],
+                    })
+                    .map_err(|error| error.to_string())?;
+                thread::sleep(Duration::from_millis(10));
+            }
             expect_host_control(
                 &mut first,
                 Instant::now() + Duration::from_secs(5),
@@ -2486,18 +2490,25 @@ mod tests {
                 Instant::now() + Duration::from_secs(5),
                 |message| matches!(message, ControlMessage::RequestKeyframe(request) if request.epoch == 2),
             )?;
-            sender
-                .send_frame(racc_net::SenderFrame {
-                    epoch: 2,
-                    frame_id: 1,
-                    keyframe: true,
-                    config: true,
-                    capture_ts_us: 20,
-                    bytes: vec![
-                        0, 0, 0, 1, 0x67, 0x42, 0, 0x1e, 0, 0, 1, 0x68, 0xce, 0, 0, 1, 0x65, 0x88,
-                    ],
-                })
-                .map_err(|error| error.to_string())?;
+            // UDP can legitimately lose one whole-frame datagram. Send a short
+            // deterministic keyframe sequence so this reconnect test verifies
+            // delivery/recovery rather than depending on one localhost packet.
+            for frame_id in 1..=5 {
+                sender
+                    .send_frame(racc_net::SenderFrame {
+                        epoch: 2,
+                        frame_id,
+                        keyframe: true,
+                        config: true,
+                        capture_ts_us: 20 + frame_id,
+                        bytes: vec![
+                            0, 0, 0, 1, 0x67, 0x42, 0, 0x1e, 0, 0, 1, 0x68, 0xce, 0, 0, 1, 0x65,
+                            0x88,
+                        ],
+                    })
+                    .map_err(|error| error.to_string())?;
+                thread::sleep(Duration::from_millis(10));
+            }
             expect_host_control(
                 &mut second,
                 Instant::now() + Duration::from_secs(5),
@@ -2640,9 +2651,11 @@ mod tests {
             )),
             "resumed stream reset was not delivered"
         );
-        assert!(seen
-            .iter()
-            .any(|event| matches!(event, ViewerRuntimeEvent::FrameAvailable { epoch: 2, .. })));
+        assert!(
+            seen.iter()
+                .any(|event| matches!(event, ViewerRuntimeEvent::FrameAvailable { epoch: 2, .. })),
+            "resumed keyframe was not decoded; events: {seen:?}"
+        );
         assert_eq!(
             slot.lock()
                 .expect("promoted frame")

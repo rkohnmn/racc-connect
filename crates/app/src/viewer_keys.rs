@@ -142,6 +142,29 @@ pub(crate) fn physical_code_to_hid(code: Code) -> Option<u16> {
     })
 }
 
+/// Applies the macOS virtual-key table to iced's platform-neutral physical location.
+///
+/// iced already exposes hardware positions, so the HID usage is the primary identity. The
+/// round-trip through the macOS table ensures the viewer only forwards positions that the Mac
+/// host can identify and inject using its native virtual-key mapping.
+#[cfg(any(target_os = "macos", test))]
+fn macos_physical_code_to_hid(code: Code) -> Option<u16> {
+    let hid_usage = physical_code_to_hid(code)?;
+    let macos_keycode = racc_input::hid_to_macos_keycode(hid_usage)?;
+    racc_input::macos_keycode_to_hid(macos_keycode)
+}
+
+fn platform_code_to_hid(code: Code) -> Option<u16> {
+    #[cfg(target_os = "macos")]
+    {
+        macos_physical_code_to_hid(code)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        physical_code_to_hid(code)
+    }
+}
+
 /// Converts iced's current modifier state to the protocol's Shift/Ctrl/Alt/Meta bit mask.
 pub(crate) fn modifier_bits(modifiers: Modifiers) -> u8 {
     u8::from(modifiers.shift())
@@ -180,7 +203,7 @@ pub(crate) fn reduce_physical_key_with_swap(
     } else {
         code
     };
-    let hid_usage = physical_code_to_hid(code)?;
+    let hid_usage = platform_code_to_hid(code)?;
     Some(reducer.key_event(hid_usage, pressed, modifier_bits(modifiers)))
 }
 
@@ -338,6 +361,23 @@ mod tests {
             .map(|(usage, _)| *usage)
             .collect();
         assert_eq!(mapped, supported);
+    }
+
+    #[test]
+    fn mac_viewer_mapping_round_trips_native_virtual_key_positions() {
+        use Code::*;
+
+        for (code, expected) in [
+            (KeyA, Some(0x04)),
+            (KeyQ, Some(0x14)),
+            (Digit1, Some(0x1e)),
+            (ControlLeft, Some(0xe0)),
+            (SuperRight, Some(0xe7)),
+            (F24, None),
+            (IntlYen, None),
+        ] {
+            assert_eq!(macos_physical_code_to_hid(code), expected, "{code:?}");
+        }
     }
 
     #[test]

@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import shutil
 import zipfile
 from pathlib import Path
 
+try:
+    from .write_sha256 import write_sidecars
+except ImportError:
+    from write_sha256 import write_sidecars
+
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = ["README.md", "CHANGELOG.md", "THIRD_PARTY_LICENSES.md", "docs/USER_GUIDE.md", "docs/PACKAGING.md", "docs/ASSETS.md", "docs/LICENSE_OPTIONS.md"]
-WINDOWS_SCRIPTS = ["scripts/install-service.ps1", "scripts/uninstall-service.ps1", "scripts/firewall-rules.ps1", "scripts/firewall-rules-remove.ps1", "scripts/set-app-autostart.ps1"]
+WINDOWS_SCRIPTS = ["scripts/install-service.ps1", "scripts/uninstall-service.ps1", "scripts/firewall-rules.ps1", "scripts/firewall-rules-remove.ps1", "scripts/set-app-autostart.ps1", "scripts/remove-app-autostart.ps1"]
 MAC_SCRIPTS = ["scripts/build-macos-app.sh", "scripts/notarize-macos.sh", "scripts/install-launch-agents.sh", "scripts/uninstall-launch-agents.sh"]
 MAC_SUPPORT_FILES = ["packaging/macos/com.racc.connect.host-agent.plist.in"]
 
@@ -41,10 +45,11 @@ def package(version: str, platform: str, binary_dir: Path, output: Path, dry_run
     if stage.resolve().parent != output:
         raise ValueError("staging directory escapes the dist directory")
     archive = output / f"{package_name}.zip"
-    checksum = archive.with_suffix(archive.suffix + ".sha256")
+    checksum = archive.with_name(archive.name + ".sha256")
     if dry_run:
         print(f"Would stage portable directory: {stage}")
-        print(f"Would create deterministic ZIP and SHA-256: {archive}")
+        print(f"Would create deterministic ZIP: {archive}")
+        print(f"Would write SHA-256 sidecar: {archive.name}.sha256")
         return archive, checksum
 
     output.mkdir(parents=True, exist_ok=True)
@@ -85,10 +90,8 @@ def package(version: str, platform: str, binary_dir: Path, output: Path, dry_run
                 info.external_attr = (0o100644 & 0xFFFF) << 16
                 zipped.writestr(info, path.read_bytes(), compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
     temp_archive.replace(archive)
-    digest = hashlib.sha256(archive.read_bytes()).hexdigest()
-    checksum.write_text(f"{digest}  {archive.name}\n", encoding="ascii", newline="\n")
     print(f"Portable package: {archive} ({archive.stat().st_size} bytes)")
-    print(f"SHA-256: {digest}")
+    write_sidecars([archive])
     return archive, checksum
 
 

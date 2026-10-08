@@ -15,11 +15,16 @@ if [[ "$MODE" == --disable ]]; then
   echo 'Removed Racc Connect app and host LaunchAgents.'
   exit 0
 fi
-if [[ "$MODE" != --enable || -z "$APP_PATH" || -z "$HOST_PATH" ]]; then
-  echo 'Usage: install-launch-agents.sh --enable <racc-app-path> <racc-host-agent-path> | --disable' >&2
+if [[ "$MODE" == --host-only ]]; then
+  HOST_PATH="${2:-}"
+elif [[ "$MODE" != --enable || -z "$APP_PATH" || -z "$HOST_PATH" ]]; then
+  echo 'Usage: install-launch-agents.sh --enable <racc-app-path> <racc-host-agent-path> | --host-only <racc-host-agent-path> | --disable' >&2
   exit 2
 fi
-if [[ ! -x "$APP_PATH" || ! -x "$HOST_PATH" ]]; then echo 'Both executable paths must exist and be executable.' >&2; exit 2; fi
+if [[ ( "$MODE" == --enable && ! -x "$APP_PATH" ) || ! -x "$HOST_PATH" ]]; then
+  echo 'The requested executable paths must exist and be executable.' >&2
+  exit 2
+fi
 mkdir -p "$AGENTS"
 write_agent() {
   local label="$1" executable="$2" plist="$3" keep_alive="$4" mode="${5:-}"
@@ -35,6 +40,12 @@ write_agent() {
   launchctl bootout "gui/$(id -u)" "$plist" 2>/dev/null || true
   launchctl bootstrap "gui/$(id -u)" "$plist"
 }
-write_agent "$APP_LABEL" "$APP_PATH" "$AGENTS/$APP_LABEL.plist" false
+if [[ "$MODE" == --enable ]]; then
+  write_agent "$APP_LABEL" "$APP_PATH" "$AGENTS/$APP_LABEL.plist" false
+fi
 write_agent "$HOST_LABEL" "$HOST_PATH" "$AGENTS/$HOST_LABEL.plist" true host
-echo 'Installed the current-user app and supervised host LaunchAgents. The host runs only in the logged-in GUI session.'
+if [[ "$MODE" == --enable ]]; then
+  echo 'Installed the current-user app and supervised host LaunchAgents. The host runs only in the logged-in GUI session.'
+else
+  echo 'Installed the supervised host LaunchAgent. App autostart remains controlled by Settings.'
+fi

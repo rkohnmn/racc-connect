@@ -17,3 +17,8 @@ if (-not $CompilerPath) {
 }
 & $CompilerPath 'packaging\windows\racc-connect.iss'
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE." }
+
+$installer = Join-Path (Get-Location) "dist\racc-connect-$($env:RACC_VERSION)-setup-windows-x64.exe"
+if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) { throw "Inno Setup succeeded but the installer artifact was not found: $installer" }
+python scripts/write_sha256.py $installer
+if ($LASTEXITCODE -ne 0) { throw "Could not write installer SHA-256 sidecar (exit code $LASTEXITCODE)." }

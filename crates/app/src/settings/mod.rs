@@ -27,6 +27,7 @@ use std::sync::{Arc, Mutex};
 
 /// Installs a panic hook that appends a bounded diagnostic to the per-user log folder.
 /// The caller is responsible for choosing a private, per-user directory.
+/// Panic payloads are deliberately redacted because they can contain private runtime data.
 /// No frames, clipboard contents, input events, or environment variables are read here.
 pub fn install_panic_log_hook(log_dir: impl AsRef<Path>) {
     let log_dir = log_dir.as_ref().to_path_buf();
@@ -35,17 +36,6 @@ pub fn install_panic_log_hook(log_dir: impl AsRef<Path>) {
         let Ok(_guard) = write_lock.lock() else {
             return;
         };
-        let message = panic_info
-            .payload()
-            .downcast_ref::<&str>()
-            .copied()
-            .or_else(|| {
-                panic_info
-                    .payload()
-                    .downcast_ref::<String>()
-                    .map(String::as_str)
-            })
-            .unwrap_or("non-string panic payload");
         let location = panic_info
             .location()
             .map(|location| {
@@ -57,11 +47,6 @@ pub fn install_panic_log_hook(log_dir: impl AsRef<Path>) {
                 )
             })
             .unwrap_or_else(|| "unknown location".to_owned());
-        let message: String = message
-            .chars()
-            .filter(|character| !character.is_control())
-            .take(1024)
-            .collect();
         if fs::create_dir_all(&log_dir).is_err() {
             return;
         }
@@ -72,6 +57,6 @@ pub fn install_panic_log_hook(log_dir: impl AsRef<Path>) {
         let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) else {
             return;
         };
-        let _ = writeln!(file, "panic at {location}: {message}");
+        let _ = writeln!(file, "panic at {location}: payload redacted");
     }));
 }

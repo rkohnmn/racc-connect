@@ -337,6 +337,8 @@ mod tests {
                         helper_state: HelperState::Running,
                         connected_viewers: 2,
                         pending_approvals: 1,
+                        screen_recording_granted: None,
+                        accessibility_granted: None,
                     },
                 },
                 IpcRequest::ListAllowlist => IpcResponse::Allowlist {

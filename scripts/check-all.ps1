@@ -16,6 +16,27 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & (Join-Path $PSScriptRoot 'check-features.ps1')
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+python scripts/gen-notices.py --check
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+python scripts/test_gen_notices.py
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+python tools/icons/test_generate_icons.py
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+python scripts/test_package_artifacts.py
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+python scripts/test_write_sha256.py
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+python scripts/test_hygiene_check.py
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+python scripts/hygiene_check.py
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
 if (Get-Command cargo-deny -ErrorAction SilentlyContinue) {
     # Check both supported release targets without changing the repository policy.
     $denyStatus = 0

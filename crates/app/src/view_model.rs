@@ -876,6 +876,8 @@ mod tests {
                 helper_state: racc_core::ipc::HelperState::Running,
                 connected_viewers: 1,
                 pending_approvals: 0,
+                screen_recording_granted: None,
+                accessibility_granted: None,
             }),
             allowlist: Vec::new(),
             error: None,

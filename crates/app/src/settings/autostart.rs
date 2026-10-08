@@ -200,7 +200,10 @@ impl AutostartBackend for MacLaunchAgentBackend {
                 "refusing to modify a LaunchAgent not owned by this app",
             ));
         }
+        let domain = launchctl_gui_domain()?;
+        let service = format!("{domain}/{label}");
         let Some(contents) = &plan.contents else {
+            run_launchctl(&["disable", &service])?;
             return match fs::remove_file(path) {
                 Ok(()) => Ok(()),
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -228,12 +231,73 @@ impl AutostartBackend for MacLaunchAgentBackend {
             file.write_all(contents.as_bytes())?;
             file.sync_all()?;
             drop(file);
-            fs::rename(&temporary, path)
+            fs::rename(&temporary, path)?;
+            run_launchctl(&["enable", &service])?;
+            if !launchctl_service_loaded(&service)? {
+                run_launchctl(&["bootstrap", &domain, path.to_string_lossy().as_ref()])?;
+            }
+            Ok(())
         })();
         if result.is_err() {
             let _ = fs::remove_file(&temporary);
         }
         result
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn launchctl_gui_domain() -> std::io::Result<String> {
+    use std::process::{Command, Stdio};
+
+    let output = Command::new("id")
+        .arg("-u")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()?;
+    if !output.status.success() {
+        return Err(std::io::Error::other(
+            "could not determine the current user ID",
+        ));
+    }
+    let uid = String::from_utf8(output.stdout)
+        .map_err(|_| std::io::Error::other("current user ID was not valid UTF-8"))?;
+    let uid = uid.trim();
+    if uid.is_empty() || !uid.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err(std::io::Error::other("current user ID was malformed"));
+    }
+    Ok(format!("gui/{uid}"))
+}
+
+#[cfg(target_os = "macos")]
+fn launchctl_service_loaded(service: &str) -> std::io::Result<bool> {
+    use std::process::{Command, Stdio};
+
+    let status = Command::new("launchctl")
+        .arg("print")
+        .arg(service)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()?;
+    Ok(status.success())
+}
+
+#[cfg(target_os = "macos")]
+fn run_launchctl(arguments: &[&str]) -> std::io::Result<()> {
+    use std::process::{Command, Stdio};
+
+    let status = Command::new("launchctl")
+        .args(arguments)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(std::io::Error::other(format!(
+            "launchctl {} failed with status {}",
+            arguments.first().copied().unwrap_or("command"),
+            status.code().unwrap_or(-1)
+        )))
     }
 }
 

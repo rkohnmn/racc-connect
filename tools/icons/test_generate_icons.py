@@ -8,11 +8,12 @@ from pathlib import Path
 
 GENERATOR = Path(__file__).with_name("generate_icons.py")
 CHECKED_IN = GENERATOR.parent.parent.parent / "assets" / "icons"
+WORKSPACE_ROOT = CHECKED_IN.parents[2]
 
 
 class IconGeneratorTests(unittest.TestCase):
     def test_outputs_are_reproducible_and_have_expected_container_headers(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(dir=WORKSPACE_ROOT, prefix=".m10-icons-test-") as directory:
             root = Path(directory)
             outputs = []
             for name in ("first", "second"):
@@ -43,7 +44,7 @@ class IconGeneratorTests(unittest.TestCase):
             self.assertTrue((outputs[0] / "racc-menubar-template.png").exists())
 
     def test_checked_in_assets_match_generator_output(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(dir=WORKSPACE_ROOT, prefix=".m10-icons-test-") as directory:
             generated = Path(directory) / "icons"
             subprocess.run([sys.executable, str(GENERATOR), "--output", str(generated)], check=True)
             generated_files = {path.name: path.read_bytes() for path in generated.iterdir() if path.is_file()}

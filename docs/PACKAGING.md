@@ -8,7 +8,7 @@ Distribution scope is **personal-only as an assumption from `docs/PROJECT_SCOPE.
 
 ## Reproducible portable release
 
-The workspace release binaries use the profile in the root Cargo manifest. Package archives are assembled in a stable path order with fixed ZIP timestamps; each archive has a SHA-256 sidecar. The Rust toolchain and lockfile are pinned. Generated dependency notices are part of the archive.
+The workspace release binaries use the profile in the root Cargo manifest. Package archives are assembled in a stable path order with fixed ZIP timestamps; each archive has a basename-only, GNU-compatible `.sha256` sidecar. The Windows installer and macOS app ZIP/DMG also receive sidecars immediately after creation. The Rust toolchain and lockfile are pinned. Generated dependency notices are part of the archive.
 
 Windows PC:
 
@@ -28,11 +28,11 @@ scripts/build-release.sh
 
 The release script rejects Linux because this project supports Windows and macOS only.
 
-Artifacts go to ignored `dist/`. The portable archive contains the app, host-agent, support documentation, icon outputs and the platform's human-run setup scripts. ZIP timestamps are normalized to 1980-01-01 UTC; compression output can still differ across Python/zlib implementations or binary toolchains. Checksums identify the exact produced bytes; they are not a claim that all compiler builds are byte-for-byte reproducible.
+Artifacts go to ignored `dist/`. The portable archive contains the app, host-agent, support documentation, icon outputs and the platform's human-run setup scripts. ZIP timestamps are normalized to 1980-01-01 UTC; compression output can still differ across Python/zlib implementations or binary toolchains. Checksums identify the exact produced bytes; they are not a claim that all compiler builds are byte-for-byte reproducible. Sidecars contain `<lowercase SHA-256><two spaces><artifact basename>` followed by LF, so they are stable across the Windows and macOS packaging scripts and can be checked from `dist/` with `shasum -a 256 -c <sidecar>` on macOS. On Windows, compare the sidecar's first field with `(Get-FileHash <artifact> -Algorithm SHA256).Hash.ToLowerInvariant()`.
 
 A release build and artifact sizes are recorded in the current session entry in `docs/PROGRESS.md`. Private idle memory and 24-hour resource use remain unmeasured; record them in `docs/HARDWARE.md` after observing the release processes. Do not infer idle memory from fake UI measurements.
 
-The release profile uses measured thin LTO, one codegen unit, symbol stripping, and unwind panic behavior; see [ADR 0032](decisions/0032-release-profile.md) for the default-versus-candidate sizes and build times. Startup behavior and idle private memory remain unmeasured; the release build has not been run as a live app or host. The app now installs the settings module's panic hook during startup. The hook writes only a bounded panic location/message record and does not inspect frames, clipboard, input, or environment values.
+The release profile uses measured thin LTO, one codegen unit, symbol stripping, and unwind panic behavior; see [ADR 0032](decisions/0032-release-profile.md) for the default-versus-candidate sizes and build times. Startup behavior and idle private memory remain unmeasured; the release build has not been run as a live app or host. The app now installs the settings module's panic hook during startup. The hook writes only a bounded source location and a redacted payload marker; panic payload text is never logged because it may contain private runtime data.
 
 ## Windows installer
 
@@ -40,10 +40,10 @@ The chosen installer is **Inno Setup 6**, a freely available Windows installer c
 
 ```powershell
 $env:RACC_VERSION = '0.1.0' # use the version printed by cargo metadata
-& 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' packaging\windows\racc-connect.iss
+scripts/build-installer.ps1 -CompilerPath 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
 ```
 
-The script installs both binaries beneath Program Files, adds a Start Menu shortcut, offers an optional current-user Run-key task, calls the existing service registration script, adds scoped Windows Firewall rules, and schedules removal of those service and firewall rules on uninstall. The user-data directory remains outside Program Files and is not removed by default. `scripts/uninstall-service.ps1` and `scripts/firewall-rules-remove.ps1` can be reviewed independently.
+The script installs both binaries beneath Program Files, adds a Start Menu shortcut, leaves app autostart off by default for the Settings toggle, calls the existing service registration script, adds scoped Windows Firewall rules, and schedules removal of those service and firewall rules on uninstall. The user-data directory remains outside Program Files and is not removed by default. `scripts/uninstall-service.ps1` and `scripts/firewall-rules-remove.ps1` can be reviewed independently.
 
 Before release, **HUMAN-PENDING**: install Inno Setup, build the installer, inspect the command output, install and uninstall on a clean Windows 10 VM, observe SmartScreen and firewall prompts, verify SCM/helper startup, confirm Run-key behavior, verify only Tailscale ranges are allowed, and check cleanup. SCM service and helper source exists but has not been installed or run on either Windows PC; do not treat the installer source or portable ZIP as a verified host product.
 
@@ -61,13 +61,13 @@ The installer source calls the M6 PowerShell service registration and starts the
 
 ## macOS app bundle and login agents
 
-`scripts/build-macos-app.sh` must run on an Intel Mac with the pinned Rust toolchain and Xcode command-line tools. It creates `dist/Racc Connect.app`, embeds the app and host-agent, adds the app icon and third-party notices, writes `Info.plist` with Screen Recording and Accessibility explanations, chooses a normal Dock-visible app (`LSUIElement=false`), ad-hoc signs for local testing, and runs `codesign --verify` and `plutil -lint`.
+`scripts/build-macos-app.sh` must run on an Intel Mac with the pinned Rust toolchain and Xcode command-line tools. It creates `dist/Racc Connect.app`, embeds the app and host-agent, adds the app icon and third-party notices, writes `Info.plist` with Screen Recording and Accessibility explanations, chooses a normal Dock-visible app (`LSUIElement=false`), ad-hoc signs for local testing, and runs `codesign --verify` and `plutil -lint`. It also creates `dist/racc-connect-<version>-macos-x64-app.zip` with a `.sha256` sidecar.
 
 The script is **not run** on Windows. **HUMAN-PENDING on the 2015 Mac:** build the Intel bundle, inspect its contents, verify ad-hoc signing, launch it, grant Screen Recording and Accessibility, and check host/viewer runtime and thermal behavior. A per-user host LaunchAgent template/script and a private Unix-socket host IPC server/client are source-integrated, but neither was run on a Mac, so background login hosting is not verified.
 
-`scripts/install-launch-agents.sh` writes or removes only the current user's two named LaunchAgents; `scripts/uninstall-launch-agents.sh` is the matching removal entry point. The app agent uses the same `com.racc.connect` label as the Settings autostart toggle and starts at login without KeepAlive; the host agent invokes `racc-host-agent host` with KeepAlive enabled so launchd restarts it after failure. The foreground Mac host ignores optional stdin EOF so it can remain alive under launchd. `packaging/macos/com.racc.connect.host-agent.plist.in` records the host launch contract. Newer login-item APIs are not required because the target may be macOS 12. The scripts, template, and private Unix-socket IPC have not been run on a Mac. The source includes a fixed-message 1 MiB-capped host log; no LaunchAgent or logger was run on the Mac. No LaunchAgent was installed by the agent.
+`scripts/install-launch-agents.sh` supports installing both the app and host LaunchAgents, installing only the supervised host agent, and removing both; `scripts/uninstall-launch-agents.sh` removes both. The setup script installs only the host agent. App autostart is off by default and is toggled from Settings; the setting writes the `com.racc.connect` plist and applies the change to the current GUI login domain. The host agent invokes `racc-host-agent host` with KeepAlive enabled so launchd restarts it after failure. The foreground Mac host ignores optional stdin EOF so it can remain alive under launchd. `packaging/macos/com.racc.connect.host-agent.plist.in` records the host launch contract. Newer login-item APIs are not required because the target may be macOS 12. The scripts, template, and private Unix-socket IPC have not been run on a Mac. The source includes a fixed-message 1 MiB-capped host log; no LaunchAgent or logger was run on the Mac. No LaunchAgent was installed by the agent.
 
-For sharing beyond the owner's personal devices, an ad-hoc signature is insufficient. The owner must use a Developer ID Application certificate, hardened runtime, timestamped signing, and a Keychain notary profile. `scripts/notarize-macos.sh` takes those values from the owner's environment, submits via `notarytool`, staples the result, and creates a DMG. It was not run and contains no credentials.
+For sharing beyond the owner's personal devices, an ad-hoc signature is insufficient. The owner must use a Developer ID Application certificate, hardened runtime, timestamped signing, and a Keychain notary profile. `scripts/notarize-macos.sh` takes those values from the owner's environment, submits via `notarytool`, staples the result, and creates a DMG. It writes SHA-256 sidecars for both the notarization ZIP and final DMG. It was not run and contains no credentials.
 
 macOS firewall prompts are controlled by the macOS Application Firewall and Tailscale's network extension. The owner should approve the signed app when prompted, verify the connection over Tailscale, and record which prompts appeared. There is no macOS script that weakens the firewall or exposes a listener on public interfaces.
 

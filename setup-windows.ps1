@@ -166,9 +166,9 @@ try {
         $oldService.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(20))
     }
 
-    Write-Host 'Installing the app, automatic host service, Tailscale-scoped firewall rules, shortcuts, and sign-in startup ...'
+    Write-Host 'Installing the app, automatic host service, Tailscale-scoped firewall rules, and shortcuts ...'
     $install = Start-Process -FilePath $installerPath -ArgumentList @(
-        '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/TASKS=appautostart,desktopicon'
+        '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/TASKS=desktopicon'
     ) -Wait -PassThru
     if ($install.ExitCode -ne 0) {
         throw "The Racc Connect installer failed (exit code $($install.ExitCode))."

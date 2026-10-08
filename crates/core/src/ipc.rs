@@ -89,6 +89,16 @@ pub struct HostStatus {
     pub connected_viewers: u32,
     /// Number of peers awaiting local approval.
     pub pending_approvals: u32,
+    /// Whether the host-agent process has Screen Recording permission on macOS.
+    /// `None` means this platform does not report the permission or an older
+    /// host-agent version did not include it.
+    #[serde(default)]
+    pub screen_recording_granted: Option<bool>,
+    /// Whether the host-agent process has Accessibility permission on macOS.
+    /// `None` means this platform does not report the permission or an older
+    /// host-agent version did not include it.
+    #[serde(default)]
+    pub accessibility_granted: Option<bool>,
 }
 
 /// One peer entry shown in the local allowlist UI.
@@ -452,6 +462,8 @@ fn reject_unknown_response_fields(value: &serde_json::Value) -> Result<(), IpcEr
                     "helper_state",
                     "connected_viewers",
                     "pending_approvals",
+                    "screen_recording_granted",
+                    "accessibility_granted",
                 ],
             )
         }
@@ -606,6 +618,8 @@ mod tests {
                         helper_state: HelperState::Running,
                         connected_viewers: 1,
                         pending_approvals: 2,
+                        screen_recording_granted: None,
+                        accessibility_granted: None,
                     },
                 },
                 IpcRequest::Approve { node_id } => IpcResponse::ActionApplied {
@@ -642,10 +656,23 @@ mod tests {
                     helper_state: HelperState::Running,
                     connected_viewers: 1,
                     pending_approvals: 2,
+                    screen_recording_granted: None,
+                    accessibility_granted: None,
                 }
             }
         );
         assert!(server.join().is_ok_and(|result| result.is_ok()));
+    }
+
+    #[test]
+    fn status_from_older_host_agent_defaults_macos_permission_fields() {
+        let status: HostStatus = serde_json::from_str(
+            r#"{"hosting_enabled":true,"helper_state":"running","connected_viewers":0,"pending_approvals":0}"#,
+        )
+        .expect("older status remains readable");
+
+        assert_eq!(status.screen_recording_granted, None);
+        assert_eq!(status.accessibility_granted, None);
     }
 
     #[test]

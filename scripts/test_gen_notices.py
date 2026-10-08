@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 SCRIPT = Path(__file__).with_name("gen-notices.py")
+WORKSPACE_ROOT = SCRIPT.parents[1]
 
 
 class NoticeGeneratorTests(unittest.TestCase):
@@ -28,7 +29,7 @@ class NoticeGeneratorTests(unittest.TestCase):
         return path
 
     def test_fixture_inventory_includes_package_and_available_license_text(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(dir=WORKSPACE_ROOT, prefix=".m10-notices-test-") as directory:
             root = Path(directory)
             metadata = self.fixture(root)
             output = root / "notices.md"
@@ -39,14 +40,14 @@ class NoticeGeneratorTests(unittest.TestCase):
             self.assertIn("Icon artwork", text)
 
     def test_missing_license_fails_check(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(dir=WORKSPACE_ROOT, prefix=".m10-notices-test-") as directory:
             metadata = self.fixture(Path(directory), "Unknown-License-9")
             result = subprocess.run([sys.executable, str(SCRIPT), "--metadata-file", str(metadata), "--check"], capture_output=True, text=True)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("Unrecognized dependency licenses", result.stderr)
 
     def test_generation_is_byte_reproducible_for_same_metadata(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(dir=WORKSPACE_ROOT, prefix=".m10-notices-test-") as directory:
             root = Path(directory)
             metadata = self.fixture(root)
             outputs = [root / "one.md", root / "two.md"]
@@ -56,7 +57,7 @@ class NoticeGeneratorTests(unittest.TestCase):
             self.assertEqual(digests[0], digests[1])
 
     def test_check_passes_when_notice_matches_fixture_inputs(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(dir=WORKSPACE_ROOT, prefix=".m10-notices-test-") as directory:
             root = Path(directory)
             metadata = self.fixture(root)
             assets = root / "ASSETS.md"
@@ -68,7 +69,7 @@ class NoticeGeneratorTests(unittest.TestCase):
             self.assertIn("Original fixture artwork.", output.read_text(encoding="utf-8"))
 
     def test_check_rejects_changed_dependency_metadata(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(dir=WORKSPACE_ROOT, prefix=".m10-notices-test-") as directory:
             root = Path(directory)
             metadata = self.fixture(root)
             output = root / "notices.md"
@@ -85,7 +86,7 @@ class NoticeGeneratorTests(unittest.TestCase):
             self.assertIn("is stale", result.stderr)
 
     def test_check_rejects_changed_artwork_attribution(self):
-        with tempfile.TemporaryDirectory() as directory:
+        with tempfile.TemporaryDirectory(dir=WORKSPACE_ROOT, prefix=".m10-notices-test-") as directory:
             root = Path(directory)
             metadata = self.fixture(root)
             assets = root / "ASSETS.md"

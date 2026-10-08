@@ -1,5 +1,6 @@
 //! Platform-independent lifecycle model shared by the macOS capture driver and its fakes.
 use std::collections::VecDeque;
+use std::time::Duration;
 
 /// Active macOS display-capture implementation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -24,9 +25,70 @@ pub enum MacCaptureNotice {
     AccessLost {
         display_id: u32,
     },
+    /// The capture source produced no callback activity within its bounded watchdog window.
+    FrameStalled {
+        display_id: u32,
+    },
     Recovered {
         display_id: u32,
     },
+}
+
+/// Debounces capture-loss signals and detects when the source stops producing callbacks.
+///
+/// The caller supplies monotonically increasing microseconds from its own clock so this logic is
+/// deterministic in tests and independent of platform timer APIs.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct CaptureStallWatchdog {
+    last_activity_us: Option<u64>,
+    interrupted: bool,
+}
+
+impl CaptureStallWatchdog {
+    /// Starts a capture interval; source activity is expected within the configured timeout.
+    pub fn start(&mut self, now_us: u64) {
+        self.last_activity_us = Some(now_us);
+        self.interrupted = false;
+    }
+
+    /// Records a valid frame and returns whether it recovers a prior interruption.
+    pub fn frame_received(&mut self, now_us: u64) -> bool {
+        self.last_activity_us = Some(now_us);
+        std::mem::replace(&mut self.interrupted, false)
+    }
+
+    /// Records source activity that is not a new frame, such as a static-display callback.
+    pub fn activity(&mut self, now_us: u64) {
+        self.last_activity_us = Some(now_us);
+    }
+
+    /// Records an explicit driver interruption once until a later valid frame.
+    pub fn interrupt(&mut self) -> bool {
+        if self.interrupted {
+            return false;
+        }
+        self.interrupted = true;
+        true
+    }
+
+    /// Returns true once when the source has exceeded `max_gap` without a callback.
+    pub fn check_stalled(&mut self, now_us: u64, max_gap: Duration) -> bool {
+        let gap_us = u64::try_from(max_gap.as_micros()).unwrap_or(u64::MAX);
+        if self.interrupted
+            || self
+                .last_activity_us
+                .is_none_or(|last| now_us.saturating_sub(last) < gap_us)
+        {
+            return false;
+        }
+        self.interrupted = true;
+        true
+    }
+
+    /// Clears state after the source has stopped.
+    pub fn stop(&mut self) {
+        *self = Self::default();
+    }
 }
 
 /// Source operations required by the testable lifecycle controller.
@@ -203,5 +265,36 @@ mod tests {
             Some(MacCaptureNotice::DisplayRemoved { display_id: 42 })
         );
         assert_eq!(c.source().stops, 1);
+    }
+
+    #[test]
+    fn frame_stall_watchdog_reports_once_and_rearms_after_a_frame() {
+        let mut watchdog = CaptureStallWatchdog::default();
+        watchdog.start(1_000);
+        let timeout = Duration::from_secs(2);
+
+        assert!(!watchdog.check_stalled(2_000_999, timeout));
+        assert!(watchdog.check_stalled(2_001_000, timeout));
+        assert!(!watchdog.check_stalled(9_000_000, timeout));
+
+        assert!(watchdog.frame_received(9_000_001));
+        assert!(!watchdog.check_stalled(10_000_000, timeout));
+        assert!(watchdog.check_stalled(11_000_001, timeout));
+        assert!(!watchdog.interrupt());
+
+        watchdog.stop();
+        assert!(!watchdog.check_stalled(u64::MAX, timeout));
+    }
+
+    #[test]
+    fn source_activity_from_a_static_display_prevents_false_stalls() {
+        let mut watchdog = CaptureStallWatchdog::default();
+        watchdog.start(0);
+        let timeout = Duration::from_secs(2);
+
+        watchdog.activity(1_500_000);
+        assert!(!watchdog.check_stalled(3_499_999, timeout));
+        assert!(watchdog.check_stalled(3_500_000, timeout));
+        assert!(watchdog.frame_received(3_500_001));
     }
 }

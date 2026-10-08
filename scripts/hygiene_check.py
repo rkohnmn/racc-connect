@@ -17,15 +17,40 @@ PATTERNS = {
 }
 EXCLUDED_PARTS = {".git", "target", "node_modules", "__pycache__"}
 
+# Two reviewed blobs in the public history of TRANSPORT_TRACE_M2_5.txt contain
+# a personal Windows profile path. Their replacement is already in the current
+# tree. Keep this baseline exact: worktree findings are never exempt, and a
+# changed object, path, or rule is reported for review.
+HISTORY_BASELINE = frozenset({
+    ("c0de3017b472cbcc654d6803669def349d8e9e79", "docs/TRANSPORT_TRACE_M2_5.txt", "personal-windows-profile-path"),
+    ("70b87fdf00740cd18eecb50bf71dfe2a0389f332", "docs/TRANSPORT_TRACE_M2_5.txt", "personal-windows-profile-path"),
+})
+
+
+def is_baselined_history_finding(object_id: str, path: str, rule: str) -> bool:
+    """Return true only for one of the two explicitly reviewed history blobs."""
+    return (object_id, path, rule) in HISTORY_BASELINE
+
 
 def git_bytes(*args: str) -> bytes:
     return subprocess.run(["git", *args], cwd=ROOT, check=True, capture_output=True).stdout
 
 
-def check_content(content: bytes, origin: str, findings: list[str]) -> None:
+def content_findings(content: bytes, origin: str) -> list[str]:
+    findings: list[str] = []
     for name, pattern in PATTERNS.items():
         if pattern.search(content):
             findings.append(f"{origin}: {name}")
+    return findings
+
+
+def unreviewed_history_findings(object_id: str, path: str, content: bytes) -> list[str]:
+    origin = f"history blob {object_id[:12]} {path}"
+    findings = content_findings(content, origin)
+    return [
+        finding for finding in findings
+        if not is_baselined_history_finding(object_id, path, finding.rsplit(": ", 1)[-1])
+    ]
 
 
 def scan_worktree(findings: list[str]) -> None:
@@ -36,14 +61,14 @@ def scan_worktree(findings: list[str]) -> None:
         path = ROOT / relative
         if path.is_file():
             try:
-                check_content(path.read_bytes(), f"working tree {relative}", findings)
+                findings.extend(content_findings(path.read_bytes(), f"working tree {relative}"))
             except OSError:
                 continue
 
 
 def scan_history(findings: list[str]) -> None:
     commits = git_bytes("rev-list", "--all").decode("ascii", errors="replace").splitlines()
-    blobs: dict[str, str] = {}
+    blobs: set[tuple[str, str]] = set()
     for commit in commits:
         for record in git_bytes("ls-tree", "-r", "-z", commit).split(b"\x00"):
             if not record:
@@ -51,16 +76,17 @@ def scan_history(findings: list[str]) -> None:
             metadata, raw_path = record.split(b"\t", 1)
             mode, kind, object_id = metadata.split(b" ", 2)
             if kind == b"blob" and mode not in (b"120000",):
-                blobs.setdefault(object_id.decode("ascii"), raw_path.decode("utf-8", errors="replace"))
-    object_ids = list(blobs)
-    for offset in range(0, len(object_ids), 256):
-        chunk = object_ids[offset:offset + 256]
+                blobs.add((object_id.decode("ascii"), raw_path.decode("utf-8", errors="replace")))
+    blob_paths = sorted(blobs)
+    for offset in range(0, len(blob_paths), 256):
+        chunk = blob_paths[offset:offset + 256]
+        object_ids = [object_id for object_id, _ in chunk]
         output = subprocess.run(
-            ["git", "cat-file", "--batch"], cwd=ROOT, input=("\n".join(chunk) + "\n").encode("ascii"),
+            ["git", "cat-file", "--batch"], cwd=ROOT, input=("\n".join(object_ids) + "\n").encode("ascii"),
             check=True, capture_output=True,
         ).stdout
         cursor = 0
-        for object_id in chunk:
+        for object_id, path in chunk:
             newline = output.find(b"\n", cursor)
             if newline < 0:
                 raise RuntimeError("malformed git cat-file batch header")
@@ -69,7 +95,7 @@ def scan_history(findings: list[str]) -> None:
                 raise RuntimeError("unexpected non-blob in git cat-file batch")
             size = int(header[2])
             start, end = newline + 1, newline + 1 + size
-            check_content(output[start:end], f"history blob {object_id[:12]} {blobs[object_id]}", findings)
+            findings.extend(unreviewed_history_findings(object_id, path, output[start:end]))
             cursor = end + 1
 
 
@@ -86,7 +112,10 @@ def main() -> int:
         for finding in findings:
             print(f"- {finding}", file=sys.stderr)
         return 1
-    print("Hygiene scan passed: no configured secret or personal-path patterns were found in the worktree or reachable Git history.")
+    print(
+        "Hygiene scan passed: no configured secret or personal-path patterns were found in the worktree or unreviewed reachable Git history. "
+        f"Explicitly baselined historical blobs: {len(HISTORY_BASELINE)}."
+    )
     return 0
 
 

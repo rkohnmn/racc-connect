@@ -84,7 +84,17 @@ if [[ -L "$INSTALL_APP" ]]; then
   exit 1
 fi
 
-# Stop any previous per-user jobs before replacing their app bundle.
+# Preserve the app autostart choice across an update. The LaunchAgent's presence
+# is the OS-level source of truth for whether Settings enabled startup.
+APP_AUTOSTART_PLIST="$HOME/Library/LaunchAgents/com.racc.connect.plist"
+if [[ -L "$APP_AUTOSTART_PLIST" ]]; then
+  echo "Refusing to update through a symbolic link at $APP_AUTOSTART_PLIST." >&2
+  exit 1
+fi
+APP_AUTOSTART_WAS_ENABLED=false
+if [[ -f "$APP_AUTOSTART_PLIST" ]]; then APP_AUTOSTART_WAS_ENABLED=true; fi
+
+# Stop previous per-user jobs before replacing their app bundle.
 bash scripts/install-launch-agents.sh --disable
 if [[ -e "$INSTALL_APP" ]]; then
   rm -rf "$INSTALL_APP"
@@ -93,13 +103,21 @@ ditto "$BUILT_APP" "$INSTALL_APP"
 
 APP_EXECUTABLE="$INSTALL_APP/Contents/MacOS/racc-app"
 HOST_EXECUTABLE="$INSTALL_APP/Contents/MacOS/racc-host-agent"
-bash scripts/install-launch-agents.sh --enable "$APP_EXECUTABLE" "$HOST_EXECUTABLE"
+if [[ "$APP_AUTOSTART_WAS_ENABLED" == true ]]; then
+  bash scripts/install-launch-agents.sh --enable "$APP_EXECUTABLE" "$HOST_EXECUTABLE"
+else
+  bash scripts/install-launch-agents.sh --host-only "$HOST_EXECUTABLE"
+fi
 open -a "$INSTALL_APP"
 
 echo
 echo "macOS setup finished."
 echo "App installed at: $INSTALL_APP"
-echo "Viewer and host LaunchAgents are installed for the current macOS user."
+if [[ "$APP_AUTOSTART_WAS_ENABLED" == true ]]; then
+  echo "The host and app LaunchAgents are installed for the current macOS user."
+else
+  echo "The host LaunchAgent is installed for the current macOS user. App autostart is off until enabled in Settings."
+fi
 echo "Tailscale was not installed or changed."
 echo "Grant Screen Recording and Accessibility in System Settings when prompted; macOS does not allow this script to grant those permissions."
 echo "The Mac host stays at its 720p30 default until sustained performance is verified. See docs/HARDWARE.md."

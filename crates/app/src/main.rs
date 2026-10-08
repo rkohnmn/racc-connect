@@ -2662,27 +2662,30 @@ impl App {
     }
     #[cfg(target_os = "macos")]
     fn mac_permission_controls(&self) -> iced::widget::Column<'static, Message> {
-        let screen_recording_granted = matches!(
-            racc_capture::macos::screen_recording_access(),
-            racc_capture::macos::ScreenRecordingAccess::Granted
-        );
-        let accessibility_granted =
-            racc_input::macos::MacQuartzInputInjector::accessibility_trusted();
+        let host_status = self.model.local_host_status.as_ref();
+        let screen_recording_granted =
+            host_status.and_then(|status| status.screen_recording_granted);
+        let accessibility_granted = host_status.and_then(|status| status.accessibility_granted);
         let permission_row = |title: &'static str,
-                              purpose: &'static str,
-                              granted: bool,
+                              granted: Option<bool>,
                               pane: mac_permissions::PermissionPane| {
+            let (state, purpose) = match granted {
+                Some(true) => ("Granted", "Permission is available to the host agent."),
+                Some(false) => ("Required", "Required by the host agent for this operation."),
+                None => (
+                    "Unknown",
+                    "Host-agent permission status is unavailable; start the host agent to check it.",
+                ),
+            };
             row![
                 column![
                     text(title),
                     muted_text(purpose),
-                    text(if granted { "Granted" } else { "Required" })
-                        .size(tokens::META_SIZE)
-                        .color(if granted {
-                            tokens::ONLINE
-                        } else {
-                            tokens::OFFLINE
-                        }),
+                    text(state).size(tokens::META_SIZE).color(match granted {
+                        Some(true) => tokens::ONLINE,
+                        Some(false) => tokens::OFFLINE,
+                        None => tokens::MUTED,
+                    }),
                 ]
                 .spacing(tokens::SPACE_1),
                 iced::widget::Space::new().width(Fill),
@@ -2695,25 +2698,15 @@ impl App {
         column![
             section_label("MACOS PERMISSIONS"),
             muted_text(
-                "Permission checks are read-only. Racc Connect never prompts automatically."
+                "These checks report the host agent that performs capture and input. Checks are read-only; Racc Connect never prompts automatically."
             ),
             permission_row(
                 "Screen Recording",
-                if screen_recording_granted {
-                    "Screen capture is available."
-                } else {
-                    "Required to capture and stream a display."
-                },
                 screen_recording_granted,
                 mac_permissions::PermissionPane::ScreenRecording,
             ),
             permission_row(
                 "Accessibility",
-                if accessibility_granted {
-                    "Remote input injection is available."
-                } else {
-                    "Required to send keyboard and pointer input to the host."
-                },
                 accessibility_granted,
                 mac_permissions::PermissionPane::Accessibility,
             ),
@@ -2962,7 +2955,7 @@ impl App {
                 .align_y(iced::Alignment::Center),
                 muted_text("Native Rust remote desktop viewer and host controls."),
                 section_label("DISTRIBUTION"),
-                muted_text("Project license is undecided. Personal use only; no distribution terms are declared."),
+                muted_text("Project license and distribution terms are undecided. No license file is published."),
                 section_label("THIRD-PARTY NOTICES"),
                 container(scrollable(text(notices).size(tokens::META_SIZE)).height(Fill).style(scroll_style))
                     .height(Fill)

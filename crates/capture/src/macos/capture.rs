@@ -2,7 +2,10 @@
 //! ScreenCaptureKit NV12 capture adapter.
 
 use super::{
-    control::{MacCaptureController, MacCaptureNotice, MacCapturePath, MacCaptureSource},
+    control::{
+        CaptureStallWatchdog, MacCaptureController, MacCaptureNotice, MacCapturePath,
+        MacCaptureSource,
+    },
     screen_recording_access, MacDisplay, ScreenRecordingAccess,
 };
 use crate::bounded_capture_dimensions;
@@ -32,12 +35,15 @@ use std::ptr::NonNull;
 use std::{
     collections::VecDeque,
     fmt,
+    sync::atomic::{AtomicBool, Ordering},
     sync::{Arc, Condvar, Mutex, MutexGuard},
     time::{Duration, Instant},
 };
 
 const NV12_VIDEO_RANGE: u32 = 0x3432_3076;
 const MAX_PENDING_NOTICES: usize = 16;
+/// A 30 fps capture source is considered stalled after two seconds without a valid frame.
+const CAPTURE_FRAME_STALL_TIMEOUT: Duration = Duration::from_secs(2);
 // M9 captures the Mac pointer in the video and suppresses separate cursor overlays.
 const SHOW_CURSOR_IN_VIDEO: bool = true;
 
@@ -127,7 +133,7 @@ struct SharedState {
     latest_frame: Option<MacCapturedFrame>,
     notices: VecDeque<MacCaptureEvent>,
     origin: Instant,
-    interrupted: bool,
+    watchdog: CaptureStallWatchdog,
 }
 struct Shared {
     state: Mutex<SharedState>,
@@ -140,7 +146,7 @@ impl Shared {
                 latest_frame: None,
                 notices: VecDeque::new(),
                 origin: Instant::now(),
-                interrupted: false,
+                watchdog: CaptureStallWatchdog::default(),
             }),
             ready: Condvar::new(),
         }
@@ -155,8 +161,7 @@ impl Shared {
     }
     fn frame(&self, frame: MacCapturedFrame) {
         let mut state = lock_unpoisoned(&self.state);
-        if state.interrupted {
-            state.interrupted = false;
+        if state.watchdog.frame_received(frame.capture_ts_us) {
             let id = frame.native_display_id;
             if state.notices.len() == MAX_PENDING_NOTICES {
                 state.notices.pop_front();
@@ -172,8 +177,7 @@ impl Shared {
     }
     fn access_lost(&self, id: u32) {
         let mut state = lock_unpoisoned(&self.state);
-        if !state.interrupted {
-            state.interrupted = true;
+        if state.watchdog.interrupt() {
             if state.notices.len() == MAX_PENDING_NOTICES {
                 state.notices.pop_front();
             }
@@ -184,6 +188,39 @@ impl Shared {
                 }));
         }
         self.ready.notify_one();
+    }
+    fn check_stalled(&self, display_id: u32) {
+        let now_us = u64::try_from(lock_unpoisoned(&self.state).origin.elapsed().as_micros())
+            .unwrap_or(u64::MAX);
+        let mut state = lock_unpoisoned(&self.state);
+        if state
+            .watchdog
+            .check_stalled(now_us, CAPTURE_FRAME_STALL_TIMEOUT)
+        {
+            if state.notices.len() == MAX_PENDING_NOTICES {
+                state.notices.pop_front();
+            }
+            state
+                .notices
+                .push_back(MacCaptureEvent::Lifecycle(MacCaptureNotice::FrameStalled {
+                    display_id,
+                }));
+            self.ready.notify_one();
+        }
+    }
+    fn capture_started(&self) {
+        let now_us = u64::try_from(lock_unpoisoned(&self.state).origin.elapsed().as_micros())
+            .unwrap_or(u64::MAX);
+        lock_unpoisoned(&self.state).watchdog.start(now_us);
+    }
+    fn capture_stopped(&self) {
+        lock_unpoisoned(&self.state).watchdog.stop();
+    }
+    fn activity(&self, timestamp_us: u64) {
+        lock_unpoisoned(&self.state).watchdog.activity(timestamp_us);
+    }
+    fn timestamp_us(&self) -> u64 {
+        u64::try_from(lock_unpoisoned(&self.state).origin.elapsed().as_micros()).unwrap_or(u64::MAX)
     }
 }
 
@@ -283,6 +320,7 @@ struct ActiveCGDisplayStream {
     _handler: RcBlock<DisplayHandler>,
     _queue: DispatchRetained<DispatchQueue>,
     stopped: std::sync::mpsc::Receiver<()>,
+    stopping: Arc<AtomicBool>,
 }
 enum ActiveCapture {
     ScreenCaptureKit(ActiveScreenCaptureKit),
@@ -410,13 +448,26 @@ impl AppleSource {
         let queue = DispatchQueue::new("com.racc-connect.cg-display-stream", None);
         let (stopped_tx, stopped_rx) = std::sync::mpsc::sync_channel(1);
         let shared = self.shared.clone();
+        let stopping = Arc::new(AtomicBool::new(false));
+        let callback_stopping = Arc::clone(&stopping);
         let handler = RcBlock::new(
             move |status: CGDisplayStreamFrameStatus,
                   _display_time: u64,
                   surface_ptr: *mut IOSurfaceRef,
                   _update: *const CGDisplayStreamUpdate| {
                 if status == CGDisplayStreamFrameStatus::Stopped {
-                    let _ = stopped_tx.send(());
+                    if !callback_stopping.load(Ordering::Acquire) {
+                        shared.access_lost(display_id);
+                    }
+                    let _ = stopped_tx.try_send(());
+                    return;
+                }
+                if status == CGDisplayStreamFrameStatus::FrameIdle
+                    || status == CGDisplayStreamFrameStatus::FrameBlank
+                {
+                    // CoreGraphics explicitly reports idle callbacks when the display is
+                    // unchanged; they prove the stream is alive without producing a new image.
+                    shared.activity(shared.timestamp_us());
                     return;
                 }
                 if status != CGDisplayStreamFrameStatus::FrameComplete {
@@ -511,6 +562,7 @@ impl AppleSource {
             _handler: handler,
             _queue: queue,
             stopped: stopped_rx,
+            stopping,
         }));
         Ok(())
     }
@@ -536,6 +588,7 @@ impl AppleSource {
                 }
             }
             ActiveCapture::CGDisplayStream(active) => {
+                active.stopping.store(true, Ordering::Release);
                 let status = CGDisplayStream::stop(Some(&active.stream));
                 if status != CGError::Success
                     || active.stopped.recv_timeout(Duration::from_secs(5)).is_err()
@@ -654,7 +707,9 @@ impl MacCaptureBackend {
         self.controller.source_mut().source_size = Some(display.captured.display.size());
         self.controller
             .start(display.native_display_id)
-            .map_err(MacCaptureError::Platform)
+            .map_err(MacCaptureError::Platform)?;
+        self.shared.capture_started();
+        Ok(())
     }
 
     /// Switches the running capture source to another display.
@@ -668,12 +723,15 @@ impl MacCaptureBackend {
         self.controller.source_mut().source_size = Some(display.captured.display.size());
         self.controller
             .migrate(display.native_display_id)
-            .map_err(MacCaptureError::Platform)
+            .map_err(MacCaptureError::Platform)?;
+        self.shared.capture_started();
+        Ok(())
     }
 
     /// Stops capture and releases the active native stream.
     pub fn stop(&mut self) {
         self.controller.stop();
+        self.shared.capture_stopped();
     }
 
     /// Returns the next lifecycle event or latest frame, waiting no longer than timeout.
@@ -693,7 +751,17 @@ impl MacCaptureBackend {
         if let Some(event) = state.notices.pop_front() {
             return Some(event);
         }
-        state.latest_frame.take().map(MacCaptureEvent::Frame)
+        if let Some(frame) = state.latest_frame.take() {
+            return Some(MacCaptureEvent::Frame(frame));
+        }
+        drop(state);
+        if let Some(display_id) = self.controller.selected_display() {
+            self.shared.check_stalled(display_id);
+            if let Some(event) = lock_unpoisoned(&self.shared.state).notices.pop_front() {
+                return Some(event);
+            }
+        }
+        None
     }
 }
 

@@ -6,12 +6,14 @@
 
 use crate::control_server::TailscaleAllowlistAuthorizer;
 use crate::local_ipc::{serve_local_ipc_connection, LocalIpcHandler};
+use racc_capture::macos::{screen_recording_access, ScreenRecordingAccess};
 use racc_core::ipc::{
     write_server_message, AllowlistEntry, HelperState, HostStatus, IpcEvent, IpcFailureCode,
     IpcRequest, IpcRequestHandler, IpcResponse, IpcServerMessage, PeerAction, PendingPeer,
     MAX_IPC_FRAME_BYTES, MAX_IPC_TEXT_BYTES, MAX_PEER_LIST_ENTRIES,
 };
 use racc_core::{HostRuntime, HostRuntimePhase};
+use racc_input::macos::MacQuartzInputInjector;
 use std::collections::BTreeMap;
 use std::fs::{self, FileType, Metadata, Permissions};
 use std::io;
@@ -449,6 +451,11 @@ impl IpcRequestHandler for MacHostIpcHandler {
                         connected_viewers: u32::from(host_status.viewer_connected),
                         pending_approvals: u32::try_from(self.pending_snapshot().len())
                             .unwrap_or(u32::MAX),
+                        screen_recording_granted: Some(matches!(
+                            screen_recording_access(),
+                            ScreenRecordingAccess::Granted
+                        )),
+                        accessibility_granted: Some(MacQuartzInputInjector::accessibility_trusted()),
                     },
                 }
             }
@@ -680,6 +687,8 @@ mod handler_tests {
                     helper_state: HelperState::Running,
                     connected_viewers: 0,
                     pending_approvals: 0,
+                    screen_recording_granted: Some(_),
+                    accessibility_granted: Some(_),
                 }
             }
         ));

@@ -16,9 +16,9 @@ This guide describes the intended first-use flow and current human-run package s
 
 1. Install Tailscale and sign in. On Monterey, prefer the app-bundled CLI path documented in `docs/DEV_SETUP.md`.
 2. Build the `.app` bundle on the Mac with `scripts/build-macos-app.sh`. The agent has not run this script on the 2015 Mac.
-3. In Settings, check the separate Screen Recording and Accessibility statuses. Use the matching Open System Settings button when a permission is missing; the app does not prompt automatically. Grant access only to a build you trust, then reopen the app if macOS requires it.
+3. In Settings, check Screen Recording and Accessibility status reported by the host agent process. Use the matching Open System Settings button when a permission is missing; status is Unknown while the agent is offline, and the app does not prompt automatically. App autostart starts off and can be enabled in Settings. Grant access only to a build you trust, then reopen the app if macOS requires it.
 4. The bundle is ad-hoc signed for personal testing; Gatekeeper may warn. Notarized sharing builds need a human-owned Developer ID and notary keychain profile; see `docs/PACKAGING.md`.
-5. `scripts/install-launch-agents.sh` and the host-agent LaunchAgent/Unix-socket IPC are source-integrated, but have not been run on the Mac. Use the human-run install procedure only after reviewing `docs/MACOS.md`; do not infer that login hosting has been hardware-verified.
+5. The setup script installs the host-agent LaunchAgent and opens the app once; app autostart remains off until enabled in Settings. The host-agent LaunchAgent/Unix-socket IPC have not been run on the Mac. Review `docs/MACOS.md`; do not infer that login hosting has been hardware-verified.
 
 ## First run and connecting
 
@@ -61,4 +61,4 @@ The native tray menu is source-integrated with Open Racc Connect, a Hosting acti
 
 On Windows, use the Inno uninstaller or review and run `scripts/firewall-rules-remove.ps1` and `scripts/uninstall-service.ps1` from an elevated PowerShell terminal. App autostart is stored in the current user's Run key and should be removed by uninstall. Settings/allowlist data is kept outside Program Files by default to preserve it; delete only after backing up or if you explicitly want to reset approvals.
 
-On macOS, remove the app bundle and use `scripts/install-launch-agents.sh --disable` to unload/remove the two named per-user LaunchAgents. This does not erase user settings or host allowlist. Those package steps are HUMAN-PENDING and should be verified on a clean machine first.
+On macOS, remove the app bundle and use `scripts/install-launch-agents.sh --disable` to unload/remove the named app and host LaunchAgents. This does not erase user settings or host allowlist. Those package steps are HUMAN-PENDING and should be verified on a clean machine first.

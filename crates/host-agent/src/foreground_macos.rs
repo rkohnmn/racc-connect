@@ -1184,6 +1184,14 @@ fn handle_capture_event(
             let events = lock(&runner.runtime).on_capture_lost(reason, runner.now_us())?;
             handle_runtime_events(events, false, runner)
         }
+        MacCaptureEvent::Lifecycle(MacCaptureNotice::FrameStalled { display_id }) => {
+            eprintln!("Mac screen capture produced no callback activity for two seconds on native display {display_id}; host recovery is starting.");
+            runner.active_epoch = None;
+            runner.encoder = None;
+            let events = lock(&runner.runtime)
+                .on_capture_lost(RecoveryReason::AccessLost, runner.now_us())?;
+            handle_runtime_events(events, false, runner)
+        }
         MacCaptureEvent::Lifecycle(MacCaptureNotice::DisplayRemoved { display_id }) => {
             eprintln!("Mac display {display_id} was removed; refreshing host topology.");
             refresh_topology(runner)
