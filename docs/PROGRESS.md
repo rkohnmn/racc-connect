@@ -598,3 +598,9 @@ M3b should implement viewer and host session lifecycle state machines using fake
 - [VERIFIED-REVIEW] The Mac build exposed a misplaced host-log statement inside `println!`, a missing `HostAction::InjectInput` route in the Mac runtime action match, and a missing monotonic timestamp argument to `on_encoder_rebuild_result`. Moved the log call, routed runtime-generated input through the existing bounded input worker, and passed `runner.now_us()` to the rebuild callback. The malformed macro had also caused the `allowlist_path` warning.
 - [VERIFIED-RUN] `cargo fmt --all -- --check` and `git diff --check` passed.
 - [UNVERIFIED] The Windows Apple-target check still stops in `openh264-sys2` because the Windows environment lacks an Apple-target C++ compiler. Re-run `setup-macos.sh` from the current `main` checkout on Monterey to confirm this host code compiles and reveal any additional target-only diagnostics.
+
+### 2026-10-07 — Monterey host callback handle ownership
+
+- [VERIFIED-REVIEW] The Mac build found that the authenticated event callback moved its `HostInputHandle` even though `MacHost` also needs the handle for lifecycle release. The callback now owns a clone, matching the Windows foreground host pattern; the original remains with `MacHost`.
+- [VERIFIED-RUN] `cargo fmt --all -- --check` and `git diff --check` passed.
+- [HUMAN-PENDING] The Mac host-agent build must be rerun after pulling this change; this Windows environment cannot compile the Apple-target OpenH264 C++ dependency.

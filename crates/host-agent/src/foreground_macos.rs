@@ -135,6 +135,7 @@ pub fn run_foreground_host() -> Result<(), Box<dyn Error>> {
     let input_injector = MacQuartzInputInjector::new(input_maps);
     let input_worker = HostInputWorker::new(input_injector.clone())?;
     let callback_input = input_worker.handle();
+    let event_input = callback_input.clone();
     let (event_tx, event_rx) = mpsc::sync_channel(EVENT_QUEUE_CAPACITY);
     let callback_tx = event_tx.clone();
     let authorizer = Arc::new(Mutex::new(TailscaleAllowlistAuthorizer::open_config_root(
@@ -153,11 +154,11 @@ pub fn run_foreground_host() -> Result<(), Box<dyn Error>> {
                 ..
             } = &event
             {
-                let _ = callback_input.try_enqueue(*connection_id, *input);
+                let _ = event_input.try_enqueue(*connection_id, *input);
                 return;
             }
             if adapter_event_requires_input_release(&event) {
-                callback_input.request_deactivate_nonblocking();
+                event_input.request_deactivate_nonblocking();
             }
             let _ = callback_tx.try_send(event);
         },
