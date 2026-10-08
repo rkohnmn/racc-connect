@@ -190,6 +190,7 @@ fn run() -> Result<(), Box<dyn Error>> {
                 display_refresh_mhz: 60_000,
                 target_bitrate_kbps: actual_bitrate_kbps,
                 actual_bitrate_kbps,
+                process_cpu_pct_x10: None,
             }))?;
             println!("synthetic frames/sec={report_frames} bytes/sec={report_bytes}");
             report_bytes = 0;

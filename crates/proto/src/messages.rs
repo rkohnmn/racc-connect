@@ -353,6 +353,32 @@ pub struct StatsReport {
     pub target_bitrate_kbps: u32,
     /// Measured bitrate in kilobits per second.
     pub actual_bitrate_kbps: u32,
+    /// Host process CPU share of total machine capacity, multiplied by ten.
+    /// `None` means the platform sampler could not produce a valid sample.
+    pub process_cpu_pct_x10: Option<u16>,
+}
+
+/// A content-free host lifecycle event sent to the active viewer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HostEventReport {
+    /// Closed event code; no free-form host text crosses the wire.
+    pub kind: HostEventKind,
+}
+
+/// Event categories the host may report to the active viewer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum HostEventKind {
+    /// Host capture stopped producing frames and recovery began.
+    CaptureLost = 0,
+    /// Host capture or encoder recovered.
+    CaptureRecovered = 1,
+    /// Host replaced a failed hardware encoder with software encoding.
+    EncoderFallback = 2,
+    /// Host paused video delivery.
+    Paused = 3,
+    /// Host resumed video delivery.
+    Resumed = 4,
 }
 
 /// Viewer feedback used by the host quality controller.
@@ -535,6 +561,8 @@ pub enum ControlMessage {
     ClipboardSyncControl(ClipboardSyncControl),
     /// Type 19, host-to-viewer quality-policy outcome.
     QualityAdjustment(QualityAdjustment),
+    /// Type 20, host-to-viewer content-free lifecycle event.
+    HostEventReport(HostEventReport),
 }
 
 /// Common payload codec implemented by each typed control-message structure.
@@ -599,6 +627,7 @@ impl ControlMessage {
             Self::ViewerReport(value) => encode_typed(value, &mut payload)?,
             Self::ClipboardSyncControl(value) => encode_typed(value, &mut payload)?,
             Self::QualityAdjustment(value) => encode_typed(value, &mut payload)?,
+            Self::HostEventReport(value) => encode_typed(value, &mut payload)?,
         };
         Ok((message_type, payload))
     }
@@ -637,6 +666,7 @@ fn decode_payload_for_type(message_type: u8, input: &[u8]) -> ProtoResult<(Contr
         17 => decode!(ViewerReport, ViewerReport),
         18 => decode!(ClipboardSyncControl, ClipboardSyncControl),
         19 => decode!(QualityAdjustment, QualityAdjustment),
+        20 => decode!(HostEventReport, HostEventReport),
         _ => Err(ProtoError::UnknownMessageType),
     }
 }
@@ -1162,7 +1192,8 @@ fn validate_logical_clock(clock: LogicalClock) -> ProtoResult<()> {
 }
 
 fn write_stats(value: &StatsReport, writer: &mut Writer) -> ProtoResult<()> {
-    if value.host_cpu_pct_x10 > 1000 {
+    if value.host_cpu_pct_x10 > 1000 || value.process_cpu_pct_x10.is_some_and(|value| value > 1000)
+    {
         return Err(ProtoError::InvalidValue);
     }
     writer.u16(value.host_cpu_pct_x10);
@@ -1173,6 +1204,7 @@ fn write_stats(value: &StatsReport, writer: &mut Writer) -> ProtoResult<()> {
     writer.u32(value.display_refresh_mhz);
     writer.u32(value.target_bitrate_kbps);
     writer.u32(value.actual_bitrate_kbps);
+    writer.u16(value.process_cpu_pct_x10.unwrap_or(u16::MAX));
     Ok(())
 }
 
@@ -1181,16 +1213,46 @@ fn read_stats(reader: &mut Reader<'_>) -> ProtoResult<StatsReport> {
     if host_cpu_pct_x10 > 1000 {
         return Err(ProtoError::InvalidValue);
     }
+    let capture_backend = decode_capture_backend(reader.u8()?)?;
+    let encoder = decode_encoder(reader.u8()?)?;
+    let width = reader.u16()?;
+    let height = reader.u16()?;
+    let display_refresh_mhz = reader.u32()?;
+    let target_bitrate_kbps = reader.u32()?;
+    let actual_bitrate_kbps = reader.u32()?;
+    let process_cpu_pct_x10 = match reader.u16()? {
+        u16::MAX => None,
+        value @ 0..=1000 => Some(value),
+        _ => return Err(ProtoError::InvalidValue),
+    };
     Ok(StatsReport {
         host_cpu_pct_x10,
-        capture_backend: decode_capture_backend(reader.u8()?)?,
-        encoder: decode_encoder(reader.u8()?)?,
-        width: reader.u16()?,
-        height: reader.u16()?,
-        display_refresh_mhz: reader.u32()?,
-        target_bitrate_kbps: reader.u32()?,
-        actual_bitrate_kbps: reader.u32()?,
+        capture_backend,
+        encoder,
+        width,
+        height,
+        display_refresh_mhz,
+        target_bitrate_kbps,
+        actual_bitrate_kbps,
+        process_cpu_pct_x10,
     })
+}
+
+fn write_host_event(value: &HostEventReport, writer: &mut Writer) -> ProtoResult<()> {
+    writer.u8(value.kind as u8);
+    Ok(())
+}
+
+fn read_host_event(reader: &mut Reader<'_>) -> ProtoResult<HostEventReport> {
+    let kind = match reader.u8()? {
+        0 => HostEventKind::CaptureLost,
+        1 => HostEventKind::CaptureRecovered,
+        2 => HostEventKind::EncoderFallback,
+        3 => HostEventKind::Paused,
+        4 => HostEventKind::Resumed,
+        _ => return Err(ProtoError::InvalidValue),
+    };
+    Ok(HostEventReport { kind })
 }
 
 fn write_viewer_report(value: &ViewerReport, writer: &mut Writer) -> ProtoResult<()> {
@@ -1424,6 +1486,7 @@ impl_payload!(ResumeVideo, 9, write_resume, read_resume);
 impl_payload!(InputEvent, 10, write_input_event, read_input_event);
 impl_payload!(ClipboardUpdate, 11, write_clipboard, read_clipboard);
 impl_payload!(StatsReport, 12, write_stats, read_stats);
+impl_payload!(HostEventReport, 20, write_host_event, read_host_event);
 impl_payload!(Ping, 13, write_ping, read_ping);
 impl_payload!(Pong, 14, write_pong, read_pong);
 impl_payload!(CursorShape, 15, write_cursor_shape, read_cursor_shape);

@@ -17,10 +17,10 @@ pub use framing::{decode_control_frame, FrameDecoder};
 pub use messages::{
     CaptureBackend, ClipboardOrigin, ClipboardSyncControl, ClipboardUpdate, ControlMessage,
     ControlPayload, CursorBlendMode, CursorShape, DisplayInfo, Encoder, Goodbye, GoodbyeReason,
-    Hello, HelloAck, HelloStatus, InputEvent, InputEventKind, LogicalClock, OsType, PauseVideo,
-    Ping, Pong, QualityAdjustment, QualityAdjustmentReason, RequestKeyframe, ResumeVideo,
-    SetQuality, StatsReport, StreamCodec, StreamReset, StreamStatus, SwitchMonitor,
-    TopologyAnnounce, ViewerReport,
+    Hello, HelloAck, HelloStatus, HostEventKind, HostEventReport, InputEvent, InputEventKind,
+    LogicalClock, OsType, PauseVideo, Ping, Pong, QualityAdjustment, QualityAdjustmentReason,
+    RequestKeyframe, ResumeVideo, SetQuality, StatsReport, StreamCodec, StreamReset, StreamStatus,
+    SwitchMonitor, TopologyAnnounce, ViewerReport,
 };
 pub use video::{
     encode_cursor_datagram, encode_video_datagram, parse_cursor_datagram, parse_video_datagram,
@@ -29,7 +29,7 @@ pub use video::{
 };
 
 /// Current wire protocol version.
-pub const PROTOCOL_VERSION: u8 = 4;
+pub const PROTOCOL_VERSION: u8 = 5;
 /// Hello/HelloAck feature bit for text-only clipboard synchronization.
 pub const FEATURE_TEXT_CLIPBOARD: u32 = 1 << 0;
 /// Maximum size of a video or cursor UDP datagram, including its header.

@@ -1,12 +1,17 @@
 //! Bounded Windows system metrics used by one-second host telemetry reports.
 
 use ::windows::Win32::Foundation::FILETIME;
-use ::windows::Win32::System::Threading::GetSystemTimes;
+use ::windows::Win32::System::Threading::{
+    GetActiveProcessorCount, GetCurrentProcess, GetProcessTimes, GetSystemTimes,
+    ALL_PROCESSOR_GROUPS,
+};
+use std::time::Instant;
 
-/// Samples machine-wide CPU utilization without collecting per-process data.
+/// Samples machine-wide and host-process CPU utilization.
 #[derive(Default)]
 pub struct SystemCpuSampler {
     previous: Option<CpuTimes>,
+    previous_process: Option<ProcessCpuSample>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -14,6 +19,12 @@ struct CpuTimes {
     idle: u64,
     kernel: u64,
     user: u64,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ProcessCpuSample {
+    cpu_100ns: u64,
+    wall_time: Instant,
 }
 
 impl SystemCpuSampler {
@@ -32,6 +43,43 @@ impl SystemCpuSampler {
         let busy = total.saturating_sub(u128::from(idle));
         u16::try_from(busy.saturating_mul(1000).saturating_div(total).min(1000)).ok()
     }
+
+    /// Returns this host process's share of total machine CPU capacity in
+    /// tenths of a percent, or `None` until two valid samples are available.
+    pub fn sample_process_tenths(&mut self) -> Option<u16> {
+        let current = read_process_times()?;
+        let previous = self.previous_process.replace(current)?;
+        let cpu_delta = current.cpu_100ns.checked_sub(previous.cpu_100ns)?;
+        let wall_delta = current
+            .wall_time
+            .duration_since(previous.wall_time)
+            .as_nanos()
+            / 100;
+        let wall_delta = u64::try_from(wall_delta).ok()?;
+        let processor_count = processor_count()?;
+        process_cpu_pct_x10(cpu_delta, wall_delta, processor_count)
+    }
+}
+
+/// Converts process CPU time to tenths of a percent of total machine capacity.
+///
+/// Windows process times and the wall interval use 100 ns units. Values above
+/// 100% of the whole machine are clamped because they can only result from
+/// counter skew or an invalid processor count.
+fn process_cpu_pct_x10(
+    cpu_delta_100ns: u64,
+    wall_delta_100ns: u64,
+    processors: u32,
+) -> Option<u16> {
+    if wall_delta_100ns == 0 || processors == 0 {
+        return None;
+    }
+    let capacity = u128::from(wall_delta_100ns).saturating_mul(u128::from(processors));
+    let pct_x10 = u128::from(cpu_delta_100ns)
+        .saturating_mul(1000)
+        .saturating_div(capacity)
+        .min(1000);
+    u16::try_from(pct_x10).ok()
 }
 
 fn read_times() -> Option<CpuTimes> {
@@ -48,6 +96,36 @@ fn read_times() -> Option<CpuTimes> {
         kernel: filetime_value(kernel),
         user: filetime_value(user),
     })
+}
+
+fn read_process_times() -> Option<ProcessCpuSample> {
+    let mut creation = FILETIME::default();
+    let mut exit = FILETIME::default();
+    let mut kernel = FILETIME::default();
+    let mut user = FILETIME::default();
+    // SAFETY: GetCurrentProcess returns a pseudo-handle for this process. The
+    // FILETIME pointers refer to writable values that remain live for the call.
+    unsafe {
+        GetProcessTimes(
+            GetCurrentProcess(),
+            &mut creation,
+            &mut exit,
+            &mut kernel,
+            &mut user,
+        )
+        .ok()?;
+    }
+    Some(ProcessCpuSample {
+        cpu_100ns: filetime_value(kernel).saturating_add(filetime_value(user)),
+        wall_time: Instant::now(),
+    })
+}
+
+fn processor_count() -> Option<u32> {
+    // SAFETY: This query has no pointer arguments or process-lifetime
+    // requirements; ALL_PROCESSOR_GROUPS requests the machine-wide count.
+    let count = unsafe { GetActiveProcessorCount(ALL_PROCESSOR_GROUPS) };
+    (count > 0).then_some(count)
 }
 
 fn filetime_value(value: FILETIME) -> u64 {
@@ -87,5 +165,20 @@ mod tests {
             }),
             (2_u64 << 32) | 5
         );
+    }
+
+    #[test]
+    fn process_cpu_is_normalized_to_machine_capacity() {
+        // One core fully busy on a four-core machine is 25% of total capacity.
+        assert_eq!(process_cpu_pct_x10(1_000, 1_000, 4), Some(250));
+        // Two cores fully busy on a four-core machine is 50% of total capacity.
+        assert_eq!(process_cpu_pct_x10(2_000, 1_000, 4), Some(500));
+    }
+
+    #[test]
+    fn process_cpu_rejects_empty_intervals_and_clamps_to_machine_capacity() {
+        assert_eq!(process_cpu_pct_x10(1, 0, 4), None);
+        assert_eq!(process_cpu_pct_x10(1, 1, 0), None);
+        assert_eq!(process_cpu_pct_x10(8_000, 1_000, 4), Some(1000));
     }
 }

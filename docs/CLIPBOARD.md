@@ -2,7 +2,7 @@
 
 ## Current status
 
-The portable text policy, current protocol v4 session-enable control (introduced in v3), ViewerRuntime clipboard ports, and Windows and macOS host/viewer adapters are source-integrated. The viewer reads Unicode text only while the user enables clipboard sync for the active session. Remote text applies only while that same enabled session is current. Disable, disconnect, and shutdown clear queued text and gate future reads/writes. Clipboard contents never enter logs, telemetry, UI events, or status metadata.
+The portable text policy, current protocol v5 session-enable control (introduced in v3), ViewerRuntime clipboard ports, and Windows and macOS host/viewer adapters are source-integrated. The viewer reads Unicode text only while the user enables clipboard sync for the active session. Remote text applies only while that same enabled session is current. Disable, disconnect, and shutdown clear queued text and gate future reads/writes. Clipboard contents never enter logs, telemetry, UI events, or status metadata.
 
 Portable policy and fake round-trip tests pass. The NSPasteboard adapter and Mac viewer worker pass Apple-target compile checks, but the Mac foreground host check is blocked before host Rust compilation by OpenH264 needing a target C++ compiler unavailable on this Windows machine. No native clipboard or PC-to-PC round-trip has been verified on Windows or macOS; source integration is not runtime verification.
 
@@ -18,7 +18,7 @@ Portable policy and fake round-trip tests pass. The NSPasteboard adapter and Mac
 
 `racc-clipboard::ClipboardSync` is a sans-IO state machine. It supports independent directions, validates UTF-8 and size, coalesces bursts to the newest value, limits sends to five per second, rejects stale sequences, suppresses an echo after remote text is applied, and orders concurrent updates with a logical clock, origin, and wrapping sequence.
 
-`ClipboardUpdate` carries a sender sequence, Viewer/Host origin, versioned u64 logical clock, UTF-8 text, and the bounded text payload. Protocol v3 introduced `ClipboardSyncControl { enabled }`; the current wire protocol is v4. ViewerRuntime sends this after each successful handshake and whenever the user toggles sync. The authenticated host starts its clipboard bridge only after an explicit enabled signal; disable ends the host policy session and clears pending state. Clipboard sync remains disabled until the user turns it on.
+`ClipboardUpdate` carries a sender sequence, Viewer/Host origin, versioned u64 logical clock, UTF-8 text, and the bounded text payload. Protocol v3 introduced `ClipboardSyncControl { enabled }`; the current wire protocol is v5. ViewerRuntime sends this after each successful handshake and whenever the user toggles sync. The authenticated host starts its clipboard bridge only after an explicit enabled signal; disable ends the host policy session and clears pending state. Clipboard sync remains disabled until the user turns it on.
 
 Tests cover echo suppression, concurrent convergence, invalid UTF-8, exact size bounds, sequence wrap, burst coalescing and rate limits, direction toggles, session cleanup, malformed protocol values, and fake clipboard contention retries.
 

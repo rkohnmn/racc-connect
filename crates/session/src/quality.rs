@@ -287,10 +287,12 @@ impl QualityController {
     ///
     /// Loss is sustained above 2% packet loss or 5% frame loss for 3 seconds.
     /// RTT inflation is sustained above three times baseline for 5 seconds.
-    /// Two queue overflows in a 2-second rolling window step down after a
-    /// bitrate trim is delivered for one update. Recovery requires packet and
-    /// frame loss below 0.5%, RTT at most 1.5 times baseline, and 20 stable
-    /// seconds; automatic tier changes are separated by at least 30 seconds.
+    /// Two queue overflows in a 2-second rolling window step down immediately.
+    /// Queue overflow applies the 70% bitrate trim before the tier step in the
+    /// same returned action set. Sustained loss/RTT exhausts the in-tier trim
+    /// before stepping down on the next sample. Recovery requires packet and frame loss below
+    /// 0.5%, RTT at most 1.5 times baseline, and 20 stable seconds; automatic
+    /// tier step-ups are separated by at least 30 seconds.
     /// Fixed preferences never tier-step.
     pub fn update(&mut self, now_us: u64, feedback: QualityFeedback) -> Vec<QualityEvent> {
         let now_us = self.monotonic_time(now_us);
@@ -304,15 +306,6 @@ impl QualityController {
                 self.overflow_times_us.pop_front();
             }
         }
-        if let Some(reason) = self.pending_downshift.take() {
-            self.clear_feedback_windows();
-            if let Some(target) = self.current_tier.previous() {
-                self.last_auto_tier_change_us = Some(now_us);
-                return self.set_tier(target, reason);
-            }
-            return Vec::new();
-        }
-
         let loss_bad = feedback.loss_bps > QUALITY_LOSS_THRESHOLD_BPS
             || feedback.frame_loss_bps > QUALITY_FRAME_LOSS_THRESHOLD_BPS;
         update_dwell(&mut self.loss_bad_since_us, loss_bad, now_us);
@@ -326,6 +319,24 @@ impl QualityController {
                 <= u128::from(feedback.rtt_baseline_us).saturating_mul(3)
             && self.overflow_times_us.is_empty();
         update_dwell(&mut self.stable_since_us, stable, now_us);
+
+        if let Some(reason) = self.pending_downshift.take() {
+            let pressure_still_active = match reason {
+                QualityChangeReason::Loss => loss_bad,
+                QualityChangeReason::RttInflation => rtt_bad,
+                QualityChangeReason::QueueOverflow
+                | QualityChangeReason::Stable
+                | QualityChangeReason::Preference => false,
+            };
+            if pressure_still_active {
+                if let Some(target) = self.current_tier.previous() {
+                    self.last_auto_tier_change_us = Some(now_us);
+                    let events = self.set_tier(target, reason);
+                    self.clear_feedback_windows();
+                    return events;
+                }
+            }
+        }
 
         let reason = if self.overflow_times_us.len() >= 2 {
             Some(QualityChangeReason::QueueOverflow)
@@ -352,17 +363,10 @@ impl QualityController {
                 .max(self.bitrate_trim_stage);
             if reason.is_some() {
                 if self.preference == QualityPreference::Auto {
-                    // Queue overflow is an immediate backpressure signal; loss
-                    // and RTT have already received their full dwell interval.
-                    stage = if reason == Some(QualityChangeReason::QueueOverflow)
-                        || self.current_tier.previous().is_none()
-                    {
-                        3
-                    } else {
-                        // Leave a 20% bitrate trim in place before the tier
-                        // step. Lower tiers remain available for recovery.
-                        stage.min(2).max(self.bitrate_trim_stage)
-                    };
+                    // Queue pressure uses the immediate path below. Sustained
+                    // loss/RTT reaches the full 70% floor before its pending
+                    // tier step is considered on the next feedback sample.
+                    stage = 3;
                 } else {
                     // A fixed tier has no resolution step, so it can use the
                     // full trim range down to 70%.
@@ -376,7 +380,7 @@ impl QualityController {
 
         if let Some(reason) = reason.filter(|_| self.preference == QualityPreference::Auto) {
             if let Some(target) = self.current_tier.previous() {
-                if !events.is_empty() {
+                if reason != QualityChangeReason::QueueOverflow {
                     self.pending_downshift = Some(reason);
                     self.loss_bad_since_us = loss_bad.then_some(now_us);
                     self.rtt_bad_since_us = rtt_bad.then_some(now_us);
@@ -671,7 +675,15 @@ mod tests {
                 percent: 80,
             }]
         );
-        let events = policy.update(3_000_000, high_loss);
+        assert_eq!(
+            policy.update(3_000_000, high_loss),
+            vec![QualityEvent::BitrateTrim {
+                from_bps: 5_600_000,
+                to_bps: 4_900_000,
+                percent: 70,
+            }]
+        );
+        let events = policy.update(4_000_000, high_loss);
         assert_eq!(
             events,
             vec![QualityEvent::TierChanged {
@@ -701,10 +713,41 @@ mod tests {
                 percent: 80,
             }]
         );
+        assert_eq!(
+            policy.update(4_000_000, high_frame_loss),
+            vec![QualityEvent::BitrateTrim {
+                from_bps: 2_800_000,
+                to_bps: 2_450_000,
+                percent: 70,
+            }]
+        );
         assert!(changed_to(
-            &policy.update(4_000_000, high_frame_loss),
+            &policy.update(5_000_000, high_frame_loss),
             QualityTier::P480
         ));
+    }
+
+    #[test]
+    fn pending_loss_downshift_is_cancelled_when_pressure_recovers() {
+        let mut policy = controller(QualityTier::P1080, QualityPreference::Auto);
+        let high_loss = feedback(201, 0, 40_000, 40_000);
+        assert!(policy.update(0, high_loss).is_empty());
+        assert_eq!(policy.update(1_000_000, high_loss).len(), 1);
+        assert_eq!(policy.update(2_000_000, high_loss).len(), 1);
+        assert_eq!(
+            policy.update(3_000_000, high_loss),
+            vec![QualityEvent::BitrateTrim {
+                from_bps: 5_600_000,
+                to_bps: 4_900_000,
+                percent: 70,
+            }]
+        );
+
+        assert!(policy
+            .update(4_000_000, feedback(0, 0, 40_000, 40_000))
+            .is_empty());
+        assert_eq!(policy.current_tier(), QualityTier::P1080);
+        assert_eq!(policy.current_bitrate_bps(), 4_900_000);
     }
 
     #[test]
@@ -721,7 +764,8 @@ mod tests {
                 percent: 70,
             }]
         );
-        let events = policy.update(5_000_010, high_rtt);
+        assert!(policy.update(5_000_010, high_rtt).is_empty());
+        let events = policy.update(5_000_011, high_rtt);
         assert!(matches!(
             events.last(),
             Some(QualityEvent::TierChanged {
@@ -740,20 +784,72 @@ mod tests {
         assert!(policy.update(1_000_000, overflow).is_empty());
         assert_eq!(
             policy.update(3_000_000, overflow),
-            vec![QualityEvent::BitrateTrim {
-                from_bps: BITRATE_1080_BPS,
-                to_bps: 4_900_000,
-                percent: 70,
-            }]
+            vec![
+                QualityEvent::BitrateTrim {
+                    from_bps: BITRATE_1080_BPS,
+                    to_bps: 4_900_000,
+                    percent: 70,
+                },
+                QualityEvent::TierChanged {
+                    from: QualityTier::P1080,
+                    to: QualityTier::P720,
+                    reason: QualityChangeReason::QueueOverflow,
+                    target_bitrate_bps: BITRATE_720_BPS,
+                },
+            ]
         );
-        assert!(changed_to(
-            &policy.update(3_000_001, feedback(0, 0, 20_000, 20_000)),
-            QualityTier::P720
-        ));
         assert!(policy
-            .update(3_000_002, feedback(0, 0, 20_000, 20_000))
+            .update(3_000_001, feedback(0, 0, 20_000, 20_000))
             .is_empty());
         assert_eq!(policy.current_tier(), QualityTier::P720);
+    }
+
+    #[test]
+    fn marginal_loss_noise_does_not_oscillate_and_recovery_respects_stepup_rate() {
+        let mut policy = controller(QualityTier::P480, QualityPreference::Auto);
+        let mut last_step_up = None;
+        let mut step_ups = Vec::new();
+
+        // Alternate just below and just above the packet-loss threshold. Every
+        // above-threshold burst ends before the 3-second dwell can expire.
+        for tick in 0..600u64 {
+            let loss_bps = if tick % 2 == 0 { 199 } else { 201 };
+            let now_us = tick * 250_000;
+            let events = policy.update(now_us, feedback(loss_bps, 0, 10_000, 10_000));
+            assert!(
+                events.is_empty(),
+                "marginal loss changed quality at {now_us}"
+            );
+            assert_eq!(policy.current_tier(), QualityTier::P480);
+            assert_eq!(policy.current_bitrate_bps(), BITRATE_480_BPS);
+        }
+
+        // Once loss becomes stable, tier increases are gradual and remain at
+        // least 30 seconds apart, with the host/display tier cap still held.
+        for tick in 0..=100u64 {
+            let now_us = 150_000_000 + tick * 1_000_000;
+            for event in policy.update(now_us, feedback(0, 0, 10_000, 10_000)) {
+                if let QualityEvent::TierChanged {
+                    from,
+                    to,
+                    reason: QualityChangeReason::Stable,
+                    ..
+                } = event
+                {
+                    assert!(to > from);
+                    if let Some(previous) = last_step_up {
+                        assert!(now_us - previous >= QUALITY_STEP_UP_INTERVAL_US);
+                    }
+                    last_step_up = Some(now_us);
+                    step_ups.push(now_us);
+                }
+            }
+            assert!(policy.current_tier() <= policy.maximum_tier());
+        }
+
+        assert_eq!(step_ups.len(), 2);
+        assert!(step_ups[1] - step_ups[0] >= QUALITY_STEP_UP_INTERVAL_US);
+        assert_eq!(policy.current_tier(), QualityTier::P1080);
     }
 
     #[test]
@@ -780,17 +876,25 @@ mod tests {
         assert!(policy.update(0, high_loss).is_empty());
         assert_eq!(policy.update(1_000_000, high_loss).len(), 1);
         assert_eq!(policy.update(2_000_000, high_loss).len(), 1);
+        assert_eq!(
+            policy.update(3_000_000, high_loss),
+            vec![QualityEvent::BitrateTrim {
+                from_bps: 5_600_000,
+                to_bps: 4_900_000,
+                percent: 70,
+            }]
+        );
         assert!(changed_to(
-            &policy.update(3_000_000, high_loss),
+            &policy.update(4_000_000, high_loss),
             QualityTier::P720
         ));
 
         let stable = feedback(0, 0, 40_000, 40_000);
-        assert!(policy.update(3_000_001, stable).is_empty());
-        assert!(policy.update(23_000_001, stable).is_empty());
-        assert!(policy.update(32_999_999, stable).is_empty());
+        assert!(policy.update(4_000_001, stable).is_empty());
+        assert!(policy.update(24_000_001, stable).is_empty());
+        assert!(policy.update(33_999_999, stable).is_empty());
         assert!(changed_to(
-            &policy.update(33_000_000, stable),
+            &policy.update(34_000_000, stable),
             QualityTier::P1080
         ));
     }
@@ -931,17 +1035,20 @@ mod tests {
     }
 
     #[test]
-    fn stream_reset_clears_old_dwell_and_pending_changes() {
+    fn stream_reset_clears_old_dwell_and_overflow_history() {
         let mut pending = controller(QualityTier::P1080, QualityPreference::Auto);
         let mut overflow = feedback(0, 0, 10_000, 10_000);
         overflow.queue_overflow = true;
         assert!(pending.update(0, overflow).is_empty());
-        assert_eq!(pending.update(1_000_000, overflow).len(), 1);
+        assert!(changed_to(
+            &pending.update(1_000_000, overflow),
+            QualityTier::P720
+        ));
         pending.reset_feedback_window(1_500_000);
         assert!(pending
             .update(2_000_000, feedback(0, 0, 10_000, 10_000))
             .is_empty());
-        assert_eq!(pending.current_tier(), QualityTier::P1080);
+        assert_eq!(pending.current_tier(), QualityTier::P720);
 
         let mut policy = controller(QualityTier::P1080, QualityPreference::Auto);
         let high_loss = feedback(201, 0, 40_000, 40_000);
@@ -958,8 +1065,16 @@ mod tests {
                 percent: 80,
             }]
         );
+        assert_eq!(
+            policy.update(5_000_000, high_loss),
+            vec![QualityEvent::BitrateTrim {
+                from_bps: 5_600_000,
+                to_bps: 4_900_000,
+                percent: 70,
+            }]
+        );
         assert!(changed_to(
-            &policy.update(5_000_000, high_loss),
+            &policy.update(5_000_001, high_loss),
             QualityTier::P720
         ));
     }
@@ -1014,8 +1129,16 @@ mod tests {
                 percent: 80,
             }]
         );
+        assert_eq!(
+            policy.update(8_000_000, high),
+            vec![QualityEvent::BitrateTrim {
+                from_bps: 5_600_000,
+                to_bps: 4_900_000,
+                percent: 70,
+            }]
+        );
         assert!(changed_to(
-            &policy.update(8_000_000, high),
+            &policy.update(8_000_001, high),
             QualityTier::P720
         ));
     }

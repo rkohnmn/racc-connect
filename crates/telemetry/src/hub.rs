@@ -229,6 +229,8 @@ pub struct SessionSnapshot {
 pub struct HostSnapshot {
     /// Host CPU percent multiplied by ten.
     pub cpu_pct_x10: u16,
+    /// Host process share of total machine CPU capacity multiplied by ten.
+    pub process_cpu_pct_x10: Option<u16>,
     /// Active capture backend.
     pub capture_backend: CaptureBackendKind,
     /// Active encoder.
@@ -250,6 +252,7 @@ impl HostSnapshot {
     pub fn from_stats_report(report: StatsReport) -> Self {
         Self {
             cpu_pct_x10: report.host_cpu_pct_x10,
+            process_cpu_pct_x10: report.process_cpu_pct_x10,
             capture_backend: report.capture_backend.into(),
             encoder: report.encoder.into(),
             width: report.width,
@@ -507,9 +510,11 @@ mod tests {
             display_refresh_mhz: 60_000,
             target_bitrate_kbps: 3_500,
             actual_bitrate_kbps: 3_200,
+            process_cpu_pct_x10: Some(123),
         };
         let host = HostSnapshot::from_stats_report(report);
         assert_eq!(host.cpu_pct_x10, 225);
+        assert_eq!(host.process_cpu_pct_x10, Some(123));
         assert_eq!(host.capture_backend, CaptureBackendKind::ScreenCaptureKit);
         assert_eq!(host.encoder, EncoderKind::VideoToolbox);
         assert_eq!((host.width, host.height), (1280, 720));

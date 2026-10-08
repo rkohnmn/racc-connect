@@ -419,6 +419,7 @@ impl ViewModel {
                         .collect();
                 }
                 if selected_device {
+                    let previously_selected = self.core.selected_display;
                     let current_available = self.core.selected_display.is_some_and(|selected| {
                         self.core
                             .devices
@@ -447,10 +448,12 @@ impl ViewModel {
                                     })
                             })
                             .map(|display| display.id);
-                        self.overlay = SessionOverlay::Error(
-                            "The selected display is no longer available".to_owned(),
-                        );
-                        self.held_frame_id = None;
+                        if previously_selected.is_some() {
+                            self.overlay = SessionOverlay::Error(
+                                "The selected display is no longer available".to_owned(),
+                            );
+                            self.held_frame_id = None;
+                        }
                     }
                 }
             }
@@ -848,6 +851,7 @@ mod tests {
     use super::*;
     use racc_core::CoreHandle;
     use racc_testkit::FakeCore;
+    use racc_topology::{Display, DisplayFlags};
 
     fn model() -> ViewModel {
         let fake = FakeCore::new(41);
@@ -1483,6 +1487,43 @@ mod tests {
         assert_eq!(state.core.selected_display, None);
         assert!(matches!(&state.overlay, SessionOverlay::Error(_)));
     }
+
+    #[test]
+    fn first_topology_selects_primary_without_reporting_a_removed_display() {
+        let mut state = model();
+        let device_id = state
+            .core
+            .selected_device
+            .clone()
+            .expect("fake selected device");
+        state.core.selected_display = None;
+        state.overlay = SessionOverlay::Connecting;
+        let primary_id = racc_core::DisplayId::new(77).expect("valid display id");
+        let topology = racc_core::Topology::new(
+            2,
+            vec![Display::new(
+                primary_id,
+                "Primary",
+                0,
+                0,
+                1920,
+                1080,
+                1000,
+                60_000,
+                DisplayFlags::new(true, true, true, false),
+            )],
+            None,
+        )
+        .expect("valid primary display topology");
+
+        state.apply_event(CoreEvent::TopologyChanged {
+            device_id,
+            topology,
+        });
+
+        assert_eq!(state.core.selected_display, Some(primary_id));
+        assert_eq!(state.overlay, SessionOverlay::Connecting);
+    }
     #[test]
     fn viewer_connected_event_populates_the_explicit_peer() {
         let mut state = ViewModel::new(racc_core::CoreSnapshot::default());
@@ -1607,6 +1648,7 @@ mod tests {
                 display_refresh_mhz: 144_000,
                 target_bitrate_kbps: 7000,
                 actual_bitrate_kbps: 6800,
+                process_cpu_pct_x10: Some(123),
             }),
         );
         assert_eq!(state.core.telemetry.host.cpu_pct_x10, 237);

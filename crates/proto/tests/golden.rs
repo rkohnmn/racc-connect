@@ -2,15 +2,15 @@ use racc_proto::{
     decode_control_frame, encode_cursor_datagram, encode_video_datagram, parse_cursor_datagram,
     parse_video_datagram, CaptureBackend, ClipboardOrigin, ClipboardSyncControl, ClipboardUpdate,
     ControlMessage, ControlPayload, CursorShape, CursorUpdate, DisplayInfo, Encoder, Goodbye,
-    GoodbyeReason, Hello, HelloAck, HelloStatus, InputEvent, InputEventKind, LogicalClock, OsType,
-    PauseVideo, Ping, Pong, QualityAdjustment, QualityAdjustmentReason, RequestKeyframe,
-    ResumeVideo, SetQuality, StatsReport, StreamCodec, StreamReset, StreamStatus, SwitchMonitor,
-    TopologyAnnounce, VideoDatagram, VideoHeader, ViewerReport, CLIPBOARD_LOGICAL_CLOCK_VERSION,
-    MAX_CLIPBOARD_BYTES, MAX_CLIPBOARD_LOGICAL_CLOCK, MAX_CONTROL_FRAME_BYTES, MAX_CURSOR_BYTES,
-    MAX_CURSOR_DIM, MAX_DATAGRAM, MAX_DISPLAYS, MAX_FRAGMENTS_PER_FRAME, MAX_NAME_BYTES,
-    MAX_VIDEO_PAYLOAD, MAX_VIEWER_REPORT_DROPPED_FRAMES, MAX_VIEWER_REPORT_DURATION_MS,
-    PROTOCOL_VERSION, VIDEO_FLAG_CONFIG, VIDEO_FLAG_KEY, VIDEO_FLAG_LAST_FRAGMENT,
-    VIDEO_HEADER_LEN,
+    GoodbyeReason, Hello, HelloAck, HelloStatus, HostEventKind, HostEventReport, InputEvent,
+    InputEventKind, LogicalClock, OsType, PauseVideo, Ping, Pong, QualityAdjustment,
+    QualityAdjustmentReason, RequestKeyframe, ResumeVideo, SetQuality, StatsReport, StreamCodec,
+    StreamReset, StreamStatus, SwitchMonitor, TopologyAnnounce, VideoDatagram, VideoHeader,
+    ViewerReport, CLIPBOARD_LOGICAL_CLOCK_VERSION, MAX_CLIPBOARD_BYTES,
+    MAX_CLIPBOARD_LOGICAL_CLOCK, MAX_CONTROL_FRAME_BYTES, MAX_CURSOR_BYTES, MAX_CURSOR_DIM,
+    MAX_DATAGRAM, MAX_DISPLAYS, MAX_FRAGMENTS_PER_FRAME, MAX_NAME_BYTES, MAX_VIDEO_PAYLOAD,
+    MAX_VIEWER_REPORT_DROPPED_FRAMES, MAX_VIEWER_REPORT_DURATION_MS, PROTOCOL_VERSION,
+    VIDEO_FLAG_CONFIG, VIDEO_FLAG_KEY, VIDEO_FLAG_LAST_FRAGMENT, VIDEO_HEADER_LEN,
 };
 use std::fmt::Debug;
 
@@ -117,6 +117,10 @@ fn samples() -> Vec<ControlMessage> {
             display_refresh_mhz: 60000,
             target_bitrate_kbps: 4000,
             actual_bitrate_kbps: 3900,
+            process_cpu_pct_x10: Some(321),
+        }),
+        ControlMessage::HostEventReport(HostEventReport {
+            kind: HostEventKind::CaptureLost,
         }),
         ControlMessage::Ping(Ping {
             nonce: 0x0102_0304_0506_0708,
@@ -164,8 +168,8 @@ fn assert_payload_round_trip<T: ControlPayload + PartialEq + Debug>(expected: &T
 }
 
 #[test]
-fn constants_match_v4_wire_limits() {
-    assert_eq!(PROTOCOL_VERSION, 4);
+fn constants_match_v5_wire_limits() {
+    assert_eq!(PROTOCOL_VERSION, 5);
     assert_eq!(MAX_DATAGRAM, 1200);
     assert_eq!(VIDEO_HEADER_LEN, 18);
     assert_eq!(MAX_VIDEO_PAYLOAD, 1182);
@@ -199,7 +203,7 @@ fn video_header_golden_vectors_round_trip() {
                 capture_ts_us: 0x0a0b_0c0d,
             },
             vec![0x00, 0x00, 0x00, 0x01, 0x65],
-            "04 01 07 00 34 12 04 03 02 01 02 00 03 00 0d 0c 0b 0a 00 00 00 01 65",
+            "05 01 07 00 34 12 04 03 02 01 02 00 03 00 0d 0c 0b 0a 00 00 00 01 65",
         ),
         (
             VideoHeader {
@@ -212,7 +216,7 @@ fn video_header_golden_vectors_round_trip() {
                 capture_ts_us: 0x0a0b_0c0d,
             },
             vec![0x00, 0x00, 0x01, 0x41],
-            "04 01 05 00 34 12 04 03 02 01 01 00 03 00 0d 0c 0b 0a 00 00 01 41",
+            "05 01 05 00 34 12 04 03 02 01 01 00 03 00 0d 0c 0b 0a 00 00 01 41",
         ),
     ];
     for (header, payload, expected_hex) in cases {
@@ -242,7 +246,7 @@ fn cursor_datagram_golden_vector_round_trips() {
         y: 0x0102_0304,
         visible: true,
     };
-    let expected = hex("04 02 00 00 34 12 44 33 22 11 fe ff ff ff 04 03 02 01 01");
+    let expected = hex("05 02 00 00 34 12 44 33 22 11 fe ff ff ff 04 03 02 01 01");
     let mut encoded = Vec::new();
     encode_cursor_datagram(cursor, &mut encoded);
     assert_eq!(encoded, expected);
@@ -265,7 +269,7 @@ fn hello_control_prefix_and_topology_golden_vectors_round_trip() {
         max_height: 1080,
         features: 1,
     });
-    let hello_vector = hex("13 00 00 00 01 04 01 41 02 01 31 34 12 01 00 00 00 38 04 01 00 00 00");
+    let hello_vector = hex("13 00 00 00 01 05 01 41 02 01 31 34 12 01 00 00 00 38 04 01 00 00 00");
     assert_eq!(&frame(&hello)[..4], &hex("13 00 00 00"));
     assert_eq!(frame(&hello), hello_vector);
     assert_eq!(ControlMessage::decode_body(&hello_vector[4..]), Ok(hello));
@@ -384,6 +388,32 @@ fn clipboard_and_cursor_shape_golden_vectors_round_trip() {
     assert_eq!(frame(&report), report_vector);
     assert_eq!(ControlMessage::decode_body(&report_vector[4..]), Ok(report));
 
+    let stats = ControlMessage::StatsReport(StatsReport {
+        host_cpu_pct_x10: 123,
+        capture_backend: CaptureBackend::Dxgi,
+        encoder: Encoder::MediaFoundationHw,
+        width: 1280,
+        height: 720,
+        display_refresh_mhz: 60000,
+        target_bitrate_kbps: 4000,
+        actual_bitrate_kbps: 3900,
+        process_cpu_pct_x10: Some(321),
+    });
+    let stats_vector =
+        hex("17 00 00 00 0c 7b 00 01 01 00 05 d0 02 60 ea 00 00 a0 0f 00 00 3c 0f 00 00 41 01");
+    assert_eq!(frame(&stats), stats_vector);
+    assert_eq!(ControlMessage::decode_body(&stats_vector[4..]), Ok(stats));
+
+    let host_event = ControlMessage::HostEventReport(HostEventReport {
+        kind: HostEventKind::CaptureLost,
+    });
+    let host_event_vector = hex("02 00 00 00 14 00");
+    assert_eq!(frame(&host_event), host_event_vector);
+    assert_eq!(
+        ControlMessage::decode_body(&host_event_vector[4..]),
+        Ok(host_event)
+    );
+
     let adjustment = ControlMessage::QualityAdjustment(QualityAdjustment {
         epoch: 0x1234,
         reason: QualityAdjustmentReason::QueueOverflow,
@@ -480,6 +510,7 @@ fn every_control_message_round_trips_and_rejects_trailing_bytes() {
             }
             ControlMessage::QualityAdjustment(value) => assert_payload_round_trip(value, payload),
             ControlMessage::StatsReport(value) => assert_payload_round_trip(value, payload),
+            ControlMessage::HostEventReport(value) => assert_payload_round_trip(value, payload),
             ControlMessage::Ping(value) => assert_payload_round_trip(value, payload),
             ControlMessage::Pong(value) => assert_payload_round_trip(value, payload),
             ControlMessage::CursorShape(value) => assert_payload_round_trip(value, payload),

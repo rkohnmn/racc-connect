@@ -1,6 +1,6 @@
-# Racc Connect wire protocol v4
+# Racc Connect wire protocol v5
 
-Status: draft version 4. Integers are little-endian. The Rust reference implementation is **crates/proto** (package **racc-proto**).
+Status: draft version 5. Integers are little-endian. The Rust reference implementation is **crates/proto** (package **racc-proto**).
 
 ## Channels and session setup
 
@@ -17,7 +17,7 @@ Video datagrams contain no session ID. The host sends to the viewer Tailscale IP
 
 | Constant | Value | Meaning |
 |---|---:|---|
-| PROTOCOL_VERSION | 4 | Draft wire version |
+| PROTOCOL_VERSION | 5 | Draft wire version |
 | MAX_DATAGRAM | 1200 bytes | Maximum UDP datagram including header |
 | VIDEO_HEADER_LEN | 18 bytes | Video slice header |
 | MAX_VIDEO_PAYLOAD | 1182 bytes | Maximum video fragment payload |
@@ -111,6 +111,7 @@ Payload offsets below start after the type byte. Strings are a one-byte length f
 | 17 | ViewerReport | Viewer → host |
 | 18 | ClipboardSyncControl | Viewer → host |
 | 19 | QualityAdjustment | Host → viewer |
+| 20 | HostEventReport | Host → viewer |
 
 ### 1. Hello
 
@@ -248,6 +249,9 @@ Both bitrate targets must be within 70–100% of their tier defaults (480p: 1.05
 | 8 | 4 / u32 | display_refresh_mhz |
 | 12 | 4 / u32 | target_bitrate_kbps |
 | 16 | 4 / u32 | actual_bitrate_kbps |
+| 20 | 2 / u16 | process_cpu_pct_x10 (0..=1000, or 65535 when unavailable) |
+
+Machine-wide CPU remains the primary host CPU value. `process_cpu_pct_x10` reports the host-agent/helper process share of total machine CPU capacity, so a process using one full logical core on a four-core machine reports about 25%. A sampler warm-up or OS counter failure is encoded as `u16::MAX` and displayed as Unknown.
 
 Capture backend: 0 Unknown, 1 DXGI, 2 WGC, 3 ScreenCaptureKit, 4 CGDisplayStream. Encoder: 0 Unknown, 1 MediaFoundationHw, 2 OpenH264, 3 VideoToolbox, 4 Nvenc, 5 Amf, 6 Qsv.
 
@@ -285,6 +289,14 @@ Viewer-to-host feedback, sent approximately once per second while streaming.
 | 10 | 4 / u32 | decode_ms_p95, 0..=60000 |
 | 14 | 4 / u32 | dropped_frames, 0..=1000000 in the reporting interval |
 
+### 20. HostEventReport
+
+The host sends one content-free event code to the active viewer when capture or video lifecycle state changes. The message has a single u8 payload and no free-form text.
+
+| Offset | Size/type | Field |
+|---:|---|---|
+| 0 | 1 / u8 | kind: 0 CaptureLost, 1 CaptureRecovered, 2 EncoderFallback, 3 Paused, 4 Resumed |
+
 ## Validation and errors
 
 Decoders reject truncated fields, oversized declared lengths, invalid closed enums, reserved mask bits, unknown types/kinds, unsupported datagram versions, invalid UTF-8, malformed booleans, inconsistent fragments, duplicate display IDs, zero display dimensions, unsupported logical-clock versions, invalid logical-clock bounds, invalid ViewerReport ranges, and trailing bytes. Length arithmetic is checked; length fields are validated before allocation.
@@ -297,22 +309,22 @@ Hex bytes below are asserted in crates/proto/tests/golden.rs.
 
 Video KEY|LAST_FRAGMENT|CONFIG, epoch 0x1234, frame 0x01020304, fragment 2 of 3:
 ~~~text
-04 01 07 00 34 12 04 03 02 01 02 00 03 00 0d 0c 0b 0a 00 00 00 01 65
+05 01 07 00 34 12 04 03 02 01 02 00 03 00 0d 0c 0b 0a 00 00 00 01 65
 ~~~
 
 Video middle fragment with KEY|CONFIG, fragment 1 of 3:
 ~~~text
-04 01 05 00 34 12 04 03 02 01 01 00 03 00 0d 0c 0b 0a 00 00 01 41
+05 01 05 00 34 12 04 03 02 01 01 00 03 00 0d 0c 0b 0a 00 00 01 41
 ~~~
 
 Cursor update, shape 0x11223344, x=-2, y=0x01020304, visible:
 ~~~text
-04 02 00 00 34 12 44 33 22 11 fe ff ff ff 04 03 02 01 01
+05 02 00 00 34 12 44 33 22 11 fe ff ff ff 04 03 02 01 01
 ~~~
 
 Hello frame and four-byte body-length prefix:
 ~~~text
-13 00 00 00 01 02 01 41 02 01 31 34 12 01 00 00 00 38 04 01 00 00 00
+13 00 00 00 01 05 01 41 02 01 31 34 12 01 00 00 00 38 04 01 00 00 00
 ~~~
 
 TopologyAnnounce with two displays, first x=-1920:
@@ -353,11 +365,21 @@ CursorShape v2 with two BGRA pixels and PremultipliedAlpha mode:
 
 ## Versioning and compatibility
 
-Any change to wire headers, type numbers, fields, enum values, limits or validation requires a PROTOCOL_VERSION bump and this file updated in the same commit. Unknown closed-enum values and reserved bits are not ignored. Version 4 is incompatible with versions 0 through 3; both peers must advertise version 4.
+Any change to wire headers, type numbers, fields, enum values, limits or validation requires a PROTOCOL_VERSION bump and this file updated in the same commit. Unknown closed-enum values and reserved bits are not ignored. Version 5 is incompatible with versions 0 through 4; both peers must advertise version 5.
 
 ClipboardSyncControl enabled: true (type 18):
 ~~~text
 02 00 00 00 12 01
+~~~
+
+StatsReport with machine CPU 12.3%, process CPU 32.1%, DXGI and Media Foundation at 1280×720:
+~~~text
+17 00 00 00 0c 7b 00 01 01 00 05 d0 02 60 ea 00 00 a0 0f 00 00 3c 0f 00 00 41 01
+~~~
+
+HostEventReport CaptureLost:
+~~~text
+02 00 00 00 14 00
 ~~~
 
 QualityAdjustment for a queue-pressure step from 720p at 3.5 Mbps to 480p at 1.5 Mbps:
@@ -365,7 +387,7 @@ QualityAdjustment for a queue-pressure step from 720p at 3.5 Mbps to 480p at 1.5
 10 00 00 00 13 34 12 02 d0 02 e0 01 e0 67 35 00 60 e3 16 00
 ~~~
 
-## Not in v4
+## Not in v5
 
 Forward error correction, NACK retransmission, audio, HEVC, AV1, clipboard images/files, Unicode text injection for international keyboard layouts, and application-layer encryption beyond Tailscale WireGuard.
 

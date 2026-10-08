@@ -14,8 +14,8 @@ use racc_net::{
 };
 use racc_proto::{
     ClipboardOrigin, ClipboardSyncControl, ControlMessage, CursorShape, CursorUpdate, Hello,
-    HelloAck, HelloStatus, InputEvent, LogicalClock, OsType, Ping, Pong, SetQuality, StatsReport,
-    StreamReset, StreamStatus, ViewerReport, CLIPBOARD_LOGICAL_CLOCK_VERSION,
+    HelloAck, HelloStatus, HostEventKind, InputEvent, LogicalClock, OsType, Ping, Pong, SetQuality,
+    StatsReport, StreamReset, StreamStatus, ViewerReport, CLIPBOARD_LOGICAL_CLOCK_VERSION,
     MAX_VIEWER_REPORT_DROPPED_FRAMES, MAX_VIEWER_REPORT_DURATION_MS, PROTOCOL_VERSION,
 };
 use racc_session::{SessionEvent, ViewerAction, ViewerSession};
@@ -1269,6 +1269,22 @@ fn run<D, F, S>(
                     ControlMessage::StatsReport(v) => {
                         telemetry.update_host_stats(now_us(clock), v);
                         emit(&events, &dropped, ViewerRuntimeEvent::HostStats(v));
+                    }
+                    ControlMessage::HostEventReport(report) => {
+                        let (kind, detail) = match report.kind {
+                            HostEventKind::CaptureLost => {
+                                (EventKind::CaptureLost, "host capture paused")
+                            }
+                            HostEventKind::CaptureRecovered => {
+                                (EventKind::CaptureRecovered, "host capture recovered")
+                            }
+                            HostEventKind::EncoderFallback => {
+                                (EventKind::EncoderFallback, "host switched encoder backend")
+                            }
+                            HostEventKind::Paused => (EventKind::Paused, "host paused video"),
+                            HostEventKind::Resumed => (EventKind::Resumed, "host resumed video"),
+                        };
+                        let _ = telemetry.push_event(now_us(clock), kind, detail);
                     }
                     ControlMessage::QualityAdjustment(adjustment) => {
                         let now = now_us(clock);
@@ -2995,7 +3011,10 @@ mod tests {
 
     #[test]
     fn viewer_runtime_bridges_clipboard_and_reports_live_control_telemetry() {
-        use racc_proto::{CaptureBackend, ClipboardOrigin, Encoder, LogicalClock, StatsReport};
+        use racc_proto::{
+            CaptureBackend, ClipboardOrigin, Encoder, HostEventKind, HostEventReport, LogicalClock,
+            StatsReport,
+        };
 
         let ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
         let listener = ControlListener::bind(
@@ -3040,6 +3059,11 @@ mod tests {
                 display_refresh_mhz: 60_000,
                 target_bitrate_kbps: 3_500,
                 actual_bitrate_kbps: 3_100,
+                process_cpu_pct_x10: Some(123),
+            }))
+            .map_err(|error| error.to_string())?;
+            conn.send(&ControlMessage::HostEventReport(HostEventReport {
+                kind: HostEventKind::CaptureLost,
             }))
             .map_err(|error| error.to_string())?;
             conn.send(&ControlMessage::TopologyAnnounce(topology()))
@@ -3165,7 +3189,13 @@ mod tests {
                 && telemetry.as_ref().is_some_and(|snapshot| {
                     snapshot.session.last_rtt_us.is_some()
                         && snapshot.host.cpu_pct_x10 == 237
+                        && snapshot.host.process_cpu_pct_x10 == Some(123)
                         && snapshot.session.path == PathKind::Derp
+                        && snapshot
+                            .events
+                            .events()
+                            .iter()
+                            .any(|event| event.kind == EventKind::CaptureLost)
                 }))
         {
             for metadata in runtime.poll_clipboard_metadata(16).unwrap_or_default() {
@@ -3204,8 +3234,14 @@ mod tests {
         );
         assert!(telemetry.session.last_rtt_us.is_some());
         assert_eq!(telemetry.host.cpu_pct_x10, 237);
+        assert_eq!(telemetry.host.process_cpu_pct_x10, Some(123));
         assert_eq!(telemetry.host.width, 1280);
         assert_eq!(telemetry.session.path, PathKind::Derp);
+        assert!(telemetry
+            .events
+            .events()
+            .iter()
+            .any(|event| event.kind == EventKind::CaptureLost));
 
         let report = report_rx
             .recv_timeout(Duration::from_secs(3))

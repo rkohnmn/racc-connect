@@ -27,8 +27,8 @@ use racc_identity::{allowlist_path, TailscaleClient};
 use racc_input::windows::WindowsSendInput;
 use racc_net::{BindPolicy, ControlSettings, SenderFrame, VideoSender, DEFAULT_FRAME_INTERVAL_US};
 use racc_proto::{
-    CaptureBackend, ControlMessage, Encoder as EncoderKind, HelloAck, HelloStatus, OsType,
-    StatsReport, StreamStatus,
+    CaptureBackend, ControlMessage, Encoder as EncoderKind, HelloAck, HelloStatus, HostEventKind,
+    HostEventReport, OsType, StatsReport, StreamStatus,
 };
 use racc_session::{
     CaptureAction, CaptureFailure, EncoderAction, EncoderFailure, HostAction, HostConfig,
@@ -757,6 +757,7 @@ fn send_periodic_stats(runner: &mut ForegroundHost) {
             .as_ref()
             .map_or(0, VideoSendWorker::bytes_sent_total);
         let _ = runner.cpu_sampler.sample_tenths();
+        let _ = runner.cpu_sampler.sample_process_tenths();
         return;
     };
 
@@ -791,10 +792,13 @@ fn send_periodic_stats(runner: &mut ForegroundHost) {
         Some(ActiveEncoder::Software { .. }) => EncoderKind::OpenH264,
         None => EncoderKind::Unknown,
     };
+    let host_cpu_pct_x10 = runner.cpu_sampler.sample_tenths().unwrap_or(0);
+    let process_cpu_pct_x10 = runner.cpu_sampler.sample_process_tenths();
     let report = StatsReport {
         // GetSystemTimes reports machine-wide utilization. Zero is the protocol's
         // only available unknown sentinel until a pair of samples is available.
-        host_cpu_pct_x10: runner.cpu_sampler.sample_tenths().unwrap_or(0),
+        host_cpu_pct_x10,
+        process_cpu_pct_x10,
         capture_backend: if runner.capture_running {
             CaptureBackend::Dxgi
         } else {
@@ -877,12 +881,35 @@ fn handle_runtime_events(
                     }
                 }
                 HostAction::Capture(action) => execute_capture_action(action, runner)?,
-                HostAction::Encoder(action) => execute_encoder_action(action, runner)?,
+                HostAction::Encoder(action) => match action {
+                    EncoderAction::SetPaused(paused) => {
+                        if let Some(connection_id) = connection_id {
+                            report_host_event(
+                                connection_id,
+                                if paused { HostEventKind::Paused } else { HostEventKind::Resumed },
+                                runner,
+                            );
+                        }
+                        execute_encoder_action(EncoderAction::SetPaused(paused), runner)?;
+                    }
+                    action => execute_encoder_action(action, runner)?,
+                },
                 HostAction::Quality(_) => {}
                 HostAction::InjectInput(input) => {
                     route_runtime_input_action(&runner.input_handle, connection_id, input);
                 }
                 HostAction::Event(event) => {
+                    if let Some(connection_id) = connection_id {
+                        let kind = match event {
+                            SessionEvent::CaptureLost(_) => Some(HostEventKind::CaptureLost),
+                            SessionEvent::RecoverySucceeded => Some(HostEventKind::CaptureRecovered),
+                            SessionEvent::EncoderFallbackToSoftware => Some(HostEventKind::EncoderFallback),
+                            _ => None,
+                        };
+                        if let Some(kind) = kind {
+                            report_host_event(connection_id, kind, runner);
+                        }
+                    }
                     if event == SessionEvent::EncoderFailed {
                         eprintln!("H.264 hardware and software encoder setup failed; video is stopped.");
                         runner.active_epoch = None;
@@ -909,6 +936,17 @@ fn handle_runtime_events(
         }
     }
     Ok(())
+}
+
+fn report_host_event(
+    connection_id: HostConnectionId,
+    kind: HostEventKind,
+    runner: &mut ForegroundHost,
+) {
+    let message = ControlMessage::HostEventReport(HostEventReport { kind });
+    if let Err(error) = runner.control_sender.send(connection_id, message) {
+        eprintln!("could not queue host lifecycle telemetry: {error}");
+    }
 }
 
 fn handle_control_send(

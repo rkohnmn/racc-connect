@@ -105,6 +105,17 @@ Table evidence from `choose_stream_params` with fixed 1080p and default host cap
 | 3840x2160 | 1920x1080 | 7 Mbps |
 | 640x480 | 640x480 | 1.5 Mbps |
 
+## Quality adaptation (M8)
+
+`QualityController` is a pure host-side policy with virtual-time inputs. It accepts the latest authorized viewer report and local sender-queue overflow observations for the current epoch. The default H.264 tiers are 480p30 at 1.5 Mbps, 720p30 at 3.5 Mbps, and 1080p30 at 7 Mbps. Host and display capabilities cap the maximum tier; Auto never goes below 480p30. A fixed preference keeps its requested tier, clamped to those limits, while still allowing bitrate reduction.
+
+- Auto steps down after packet loss stays above 2% or frame loss above 5% for 3 seconds, or RTT remains above 3Ã— its established minimum for 5 seconds.
+- Two sender-queue overflows in a rolling 2-second window immediately produce a 70% bitrate trim followed by one tier step-down in the same ordered action set.
+- Sustained loss/RTT first reduces bitrate in 10% steps, once per second, to the 70% tier floor. If pressure still qualifies for a tier change, the tier step-down follows the trim on the next feedback sample.
+- Recovery requires packet and frame loss below 0.5%, RTT at most 1.5Ã— baseline, and 20 stable seconds. Bitrate returns gradually; automatic tier step-ups are at least 30 seconds apart.
+- Every bitrate or tier change emits a `QualityAdjustment`. Tier changes pass through the host encoder configure/reset path and force a keyframe. Decoder p95 and encoder lag are carried as observations but have no inferred policy threshold.
+
+These are documented starting parameters, not values calibrated against the owner's Tailscale routes. See ADR 0049; review after real M7/M8 network measurements.
 ## Failure mapping to AGENTS.md section 8
 
 | Failure | Session behavior | Remaining boundary |
@@ -145,6 +156,6 @@ The 20 integrated scenarios all pass:
 19. `scenario_orphan_timeout_stops_stream_at_owner_selected_five_seconds`
 20. `scenario_stuck_key_is_released_when_control_disconnects`
 
-`PROPTEST_CASES=10000 cargo test --offline -p racc-session` passes all unit, scenario, and property tests. Table-driven stream selection covers 1366×768, 2560×1080, 1080×1920, 3840×2160, and 640×480. The viewer input API suppresses pointer input while switching but forwards accepted keyboard/wheel events against the adopted stream mapping. The host validates event epoch, display, HID usage, modifiers and mouse buttons, tracks held keys/buttons, and emits releases on pause, control loss, capture loss, terminal software-encoder failure, session end, and display remap.
+`PROPTEST_CASES=10000 cargo test --offline -p racc-session` passes all unit, scenario, and property tests. Table-driven stream selection covers 1366ï¿½768, 2560ï¿½1080, 1080ï¿½1920, 3840ï¿½2160, and 640ï¿½480. The viewer input API suppresses pointer input while switching but forwards accepted keyboard/wheel events against the adopted stream mapping. The host validates event epoch, display, HID usage, modifiers and mouse buttons, tracks held keys/buttons, and emits releases on pause, control loss, capture loss, terminal software-encoder failure, session end, and display remap.
 
 The pure M3b session acceptance checks are complete. Platform adapters must still pass explicit timestamps and execute the emitted actions; actual capture/encode/decode, network authorization, input injection, and hardware session behavior remain COMPILE-ONLY, TESTED-FAKE, or HUMAN-PENDING as listed in the relevant progress and hardware sections. The integrated scenario exercises NotAuthorized handling; real Tailscale whois/allowlist behavior remains an identity/host-agent integration and hardware check. M3b ADRs are [0045 single viewer per host](decisions/0045-single-viewer-per-host.md), [0046 input during switching](decisions/0046-input-during-switch.md), and [0047 sans-I/O session core](decisions/0047-sans-io-session.md).

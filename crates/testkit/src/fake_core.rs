@@ -685,6 +685,7 @@ impl FakeCore {
             },
             host: HostSnapshot {
                 cpu_pct_x10: cpu,
+                process_cpu_pct_x10: Some(cpu / 2),
                 capture_backend: if is_mac {
                     CaptureBackendKind::ScreenCaptureKit
                 } else {

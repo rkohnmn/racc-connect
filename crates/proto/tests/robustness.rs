@@ -3,13 +3,14 @@ use racc_proto::{
     decode_control_frame, parse_cursor_datagram, parse_video_datagram, CaptureBackend,
     ClipboardOrigin, ClipboardSyncControl, ClipboardUpdate, ControlMessage, ControlPayload,
     CursorShape, CursorUpdate, DisplayInfo, Encoder, FrameDecoder, Goodbye, GoodbyeReason, Hello,
-    HelloAck, HelloStatus, InputEvent, InputEventKind, LogicalClock, OsType, PauseVideo, Ping,
-    Pong, ProtoError, QualityAdjustment, QualityAdjustmentReason, RequestKeyframe, ResumeVideo,
-    SetQuality, StatsReport, StreamCodec, StreamReset, StreamStatus, SwitchMonitor,
-    TopologyAnnounce, VideoDatagram, ViewerReport, CLIPBOARD_LOGICAL_CLOCK_VERSION,
-    MAX_CLIPBOARD_BYTES, MAX_CLIPBOARD_LOGICAL_CLOCK, MAX_CONTROL_FRAME_BYTES, MAX_DATAGRAM,
-    MAX_DISPLAYS, MAX_FRAGMENTS_PER_FRAME, MAX_VIEWER_REPORT_DROPPED_FRAMES,
-    MAX_VIEWER_REPORT_DURATION_MS, PROTOCOL_VERSION, VIDEO_FLAG_LAST_FRAGMENT,
+    HelloAck, HelloStatus, HostEventKind, HostEventReport, InputEvent, InputEventKind,
+    LogicalClock, OsType, PauseVideo, Ping, Pong, ProtoError, QualityAdjustment,
+    QualityAdjustmentReason, RequestKeyframe, ResumeVideo, SetQuality, StatsReport, StreamCodec,
+    StreamReset, StreamStatus, SwitchMonitor, TopologyAnnounce, VideoDatagram, ViewerReport,
+    CLIPBOARD_LOGICAL_CLOCK_VERSION, MAX_CLIPBOARD_BYTES, MAX_CLIPBOARD_LOGICAL_CLOCK,
+    MAX_CONTROL_FRAME_BYTES, MAX_DATAGRAM, MAX_DISPLAYS, MAX_FRAGMENTS_PER_FRAME,
+    MAX_VIEWER_REPORT_DROPPED_FRAMES, MAX_VIEWER_REPORT_DURATION_MS, PROTOCOL_VERSION,
+    VIDEO_FLAG_LAST_FRAGMENT,
 };
 
 fn ascii_string() -> impl Strategy<Value = String> {
@@ -300,6 +301,7 @@ fn arb_control_message() -> impl Strategy<Value = ControlMessage> {
                         display_refresh_mhz,
                         target_bitrate_kbps,
                         actual_bitrate_kbps,
+                        process_cpu_pct_x10: Some(500),
                     })
                 }
             ),
@@ -849,6 +851,7 @@ fn control_length_utf8_enums_bits_and_boolean_validation() {
         display_refresh_mhz: 0,
         target_bitrate_kbps: 0,
         actual_bitrate_kbps: 0,
+        process_cpu_pct_x10: None,
     }));
     bad_stats[3] = 9;
     assert_eq!(
@@ -872,6 +875,7 @@ fn control_length_utf8_enums_bits_and_boolean_validation() {
         display_refresh_mhz: 0,
         target_bitrate_kbps: 0,
         actual_bitrate_kbps: 0,
+        process_cpu_pct_x10: None,
     }));
     bad_encoder[4] = 99;
     assert_eq!(
@@ -888,10 +892,35 @@ fn control_length_utf8_enums_bits_and_boolean_validation() {
         display_refresh_mhz: 0,
         target_bitrate_kbps: 0,
         actual_bitrate_kbps: 0,
+        process_cpu_pct_x10: None,
     }));
     bad_cpu[1..3].copy_from_slice(&1001u16.to_le_bytes());
     assert_eq!(
         ControlMessage::decode_body(&bad_cpu),
+        Err(ProtoError::InvalidValue)
+    );
+    let mut bad_process_cpu = frame_body(&ControlMessage::StatsReport(StatsReport {
+        host_cpu_pct_x10: 0,
+        capture_backend: CaptureBackend::Unknown,
+        encoder: Encoder::Unknown,
+        width: 0,
+        height: 0,
+        display_refresh_mhz: 0,
+        target_bitrate_kbps: 0,
+        actual_bitrate_kbps: 0,
+        process_cpu_pct_x10: None,
+    }));
+    bad_process_cpu[21..23].copy_from_slice(&1001u16.to_le_bytes());
+    assert_eq!(
+        ControlMessage::decode_body(&bad_process_cpu),
+        Err(ProtoError::InvalidValue)
+    );
+    let mut bad_host_event = frame_body(&ControlMessage::HostEventReport(HostEventReport {
+        kind: HostEventKind::CaptureLost,
+    }));
+    bad_host_event[1] = 5;
+    assert_eq!(
+        ControlMessage::decode_body(&bad_host_event),
         Err(ProtoError::InvalidValue)
     );
     assert_eq!(

@@ -400,6 +400,7 @@ mod tests {
                 display_refresh_mhz: 60000,
                 target_bitrate_kbps: 3500,
                 actual_bitrate_kbps: 3400,
+                process_cpu_pct_x10: Some(125),
             }),
             ControlMessage::Ping(Ping {
                 nonce: 1,

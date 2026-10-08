@@ -577,7 +577,8 @@ impl HostRuntime {
             | ControlMessage::StatsReport(_)
             | ControlMessage::Pong(_)
             | ControlMessage::CursorShape(_)
-            | ControlMessage::QualityAdjustment(_) => {
+            | ControlMessage::QualityAdjustment(_)
+            | ControlMessage::HostEventReport(_) => {
                 return Ok(vec![HostRuntimeEvent::CloseConnection(connection_id)]);
             }
         };
@@ -1894,10 +1895,7 @@ mod tests {
             event,
             HostRuntimeEvent::QualityDecision(QualityEvent::BitrateTrim { .. })
         )));
-        let downshift = runtime
-            .on_local_sender_observation(sample(false), 1_600_000)
-            .unwrap_or_else(|error| panic!("sender follow-up sample: {error}"));
-        assert!(downshift.iter().any(|event| matches!(
+        assert!(second.iter().any(|event| matches!(
             event,
             HostRuntimeEvent::QualityDecision(QualityEvent::TierChanged {
                 to: QualityTier::P480,
@@ -1905,7 +1903,7 @@ mod tests {
                 ..
             })
         )));
-        assert!(downshift.iter().any(|event| matches!(
+        assert!(second.iter().any(|event| matches!(
             event,
             HostRuntimeEvent::SessionAction {
                 action: HostAction::Encoder(EncoderAction::Configure { height: 480, .. }),

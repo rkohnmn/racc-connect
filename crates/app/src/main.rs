@@ -88,6 +88,7 @@ enum LaunchMode {
 struct LaunchOptions {
     mode: LaunchMode,
     telemetry_collapsed: bool,
+    telemetry_expanded: bool,
     debug_latency: bool,
     measure_secs: Option<u64>,
 }
@@ -100,6 +101,7 @@ fn parse_launch_options(args: impl IntoIterator<Item = String>) -> Result<Launch
     let mut host_addr = None;
     let mut local_bind_ip = None;
     let mut telemetry_collapsed = false;
+    let mut telemetry_expanded = false;
     let mut debug_latency = false;
     let mut measure_secs = None;
 
@@ -109,6 +111,7 @@ fn parse_launch_options(args: impl IntoIterator<Item = String>) -> Result<Launch
             "--fake" => fake = true,
             "--fake-idle" => fake_idle = true,
             "--telemetry-collapsed" => telemetry_collapsed = true,
+            "--telemetry-expanded" => telemetry_expanded = true,
             "--debug-latency" => debug_latency = true,
             "--connect" => {
                 let value = args
@@ -141,10 +144,13 @@ fn parse_launch_options(args: impl IntoIterator<Item = String>) -> Result<Launch
                     .strip_prefix("--measure-secs=")
                     .and_then(|value| value.parse::<u64>().ok())
                     .ok_or("--measure-secs must be an unsigned integer")?;
+                if value == 0 {
+                    return Err("--measure-secs must be greater than zero".to_owned());
+                }
                 measure_secs = Some(value);
             }
             "--help" | "-h" => {
-                return Err("Usage: racc-app [--discover] [--telemetry-collapsed] [--debug-latency] | --fake [--fake-idle] [--telemetry-collapsed] [--debug-latency] [--measure-secs=N] | --connect <Tailscale-IP:PORT> --bind <local-Tailscale-IP> [--telemetry-collapsed] [--debug-latency]".to_owned());
+                return Err("Usage: racc-app [--discover] [--telemetry-collapsed|--telemetry-expanded] [--debug-latency] | --fake [--fake-idle] [--telemetry-collapsed|--telemetry-expanded] [--debug-latency] [--measure-secs=N] | --connect <Tailscale-IP:PORT> --bind <local-Tailscale-IP> [--telemetry-collapsed|--telemetry-expanded] [--debug-latency] [--measure-secs=N]".to_owned());
             }
             _ => return Err(format!("unknown option: {argument}")),
         }
@@ -156,10 +162,11 @@ fn parse_launch_options(args: impl IntoIterator<Item = String>) -> Result<Launch
         }
         LaunchMode::Fake { idle: fake_idle }
     } else {
-        if fake_idle || measure_secs.is_some() {
-            return Err(
-                "--fake-idle and --measure-secs are available only with --fake.".to_owned(),
-            );
+        if fake_idle {
+            return Err("--fake-idle is available only with --fake.".to_owned());
+        }
+        if telemetry_collapsed && telemetry_expanded {
+            return Err("Choose either --telemetry-collapsed or --telemetry-expanded.".to_owned());
         }
         match (discover, host_addr, local_bind_ip) {
             (true, Some(_), _) | (true, _, Some(_)) => {
@@ -185,10 +192,18 @@ fn parse_launch_options(args: impl IntoIterator<Item = String>) -> Result<Launch
             }
         }
     };
+    if telemetry_collapsed && telemetry_expanded {
+        return Err("Choose either --telemetry-collapsed or --telemetry-expanded.".to_owned());
+    }
+    if measure_secs.is_some() && !matches!(mode, LaunchMode::Fake { .. } | LaunchMode::Live { .. })
+    {
+        return Err("--measure-secs requires --fake or --connect/--bind.".to_owned());
+    }
 
     Ok(LaunchOptions {
         mode,
         telemetry_collapsed,
+        telemetry_expanded,
         debug_latency,
         measure_secs,
     })
@@ -393,6 +408,7 @@ struct App {
     debug_latency: bool,
     measurement_started: Instant,
     measurement_ready: bool,
+    measurement_wait_for_frame: bool,
     measurement_secs: Option<u64>,
     measurement_reported: bool,
     fake_idle: bool,
@@ -470,6 +486,7 @@ fn visible_telemetry_hash(model: &ViewModel) -> u64 {
     session.decoder.hash(&mut hasher);
     session.epoch.hash(&mut hasher);
     host.cpu_pct_x10.hash(&mut hasher);
+    host.process_cpu_pct_x10.hash(&mut hasher);
     host.capture_backend.hash(&mut hasher);
     host.encoder.hash(&mut hasher);
     host.width.hash(&mut hasher);
@@ -592,9 +609,14 @@ impl App {
                     host_addr,
                     local_bind_ip,
                 } => match AppBackend::connect(host_addr, local_bind_ip) {
-                    Ok((core, snapshot, frame_source)) => {
-                        (core, snapshot, frame_source, false, true, None)
-                    }
+                    Ok((core, snapshot, frame_source)) => (
+                        core,
+                        snapshot,
+                        frame_source,
+                        false,
+                        options.measure_secs.is_none(),
+                        None,
+                    ),
                     Err(error) => {
                         let (core, snapshot, frame_source) = AppBackend::unavailable(error.clone());
                         (core, snapshot, frame_source, false, true, Some(error))
@@ -609,8 +631,8 @@ impl App {
         model.default_quality = quality_from_preference(settings.default_quality);
         model.session_quality = model.default_quality;
         model.device_sidebar_collapsed = settings.device_sidebar_collapsed;
-        model.telemetry_sidebar_collapsed =
-            options.telemetry_collapsed || settings.telemetry_sidebar_collapsed;
+        model.telemetry_sidebar_collapsed = !options.telemetry_expanded
+            && (options.telemetry_collapsed || settings.telemetry_sidebar_collapsed);
         model.autostart_enabled = settings.autostart_enabled;
         model.local_host_controls_available = !fake_mode;
         model.core.hosting_enabled = fake_mode && settings.hosting_enabled;
@@ -658,6 +680,8 @@ impl App {
             debug_latency: options.debug_latency,
             measurement_started: Instant::now(),
             measurement_ready,
+            measurement_wait_for_frame: matches!(options.mode, LaunchMode::Live { .. })
+                && options.measure_secs.is_some(),
             measurement_secs: options.measure_secs,
             measurement_reported: false,
             fake_idle,
@@ -811,9 +835,11 @@ impl App {
                 self.sync_settings_from_model();
                 self.persist_settings_if_dirty();
 
-                if self.measurement_secs.is_some_and(|limit| {
-                    self.measurement_started.elapsed() >= Duration::from_secs(limit)
-                }) && !self.measurement_reported
+                if self.measurement_ready
+                    && self.measurement_secs.is_some_and(|limit| {
+                        self.measurement_started.elapsed() >= Duration::from_secs(limit)
+                    })
+                    && !self.measurement_reported
                 {
                     self.measurement_reported = true;
                     self.print_measurement();
@@ -826,7 +852,7 @@ impl App {
                 return Task::batch(tasks);
             }
             Message::FrameTick(now) => {
-                if !self.measurement_ready {
+                if !self.measurement_ready && !self.measurement_wait_for_frame {
                     self.measurement_started = Instant::now();
                     self.measurement_ready = true;
                 }
@@ -844,7 +870,12 @@ impl App {
                             || self.last_frame_epoch != Some(frame.epoch)
                         {
                             let now = Instant::now();
-                            if let Some(previous) = self.last_frame_at {
+                            if self.measurement_wait_for_frame && !self.measurement_ready {
+                                self.measurement_started = now;
+                                self.measurement_ready = true;
+                                self.frame_intervals_ms.clear();
+                                self.last_frame_at = Some(now);
+                            } else if let Some(previous) = self.last_frame_at {
                                 let interval_us =
                                     u64::try_from(now.duration_since(previous).as_micros())
                                         .unwrap_or(u64::MAX);
@@ -1843,6 +1874,55 @@ impl App {
         let selected = self.selected_device();
         let mut displays = column![section_label("STREAM")].spacing(tokens::SPACE_2);
         if let Some(device) = selected {
+            if device.displays.is_empty() {
+                let is_selected_connected = self.model.core.selected_device.as_ref()
+                    == Some(&device.id)
+                    && self.model.core.telemetry.session.connection_state
+                        == racc_telemetry::ConnectionState::Connected;
+                let (label, detail, action_label, action) = match topology_empty_status(
+                    device.online,
+                    device.host_capable,
+                    is_selected_connected,
+                ) {
+                    TopologyEmptyStatus::Offline => (
+                        "Computer is offline",
+                        "Reconnect it to Tailscale, then refresh the device list.",
+                        "Refresh devices",
+                        Some(Message::Action(UserAction::DiscoverDevices)),
+                    ),
+                    TopologyEmptyStatus::HostUnavailable => (
+                        "Host agent not responding",
+                        "The computer is online, but its Racc Connect host agent has not answered.",
+                        "Refresh devices",
+                        Some(Message::Action(UserAction::DiscoverDevices)),
+                    ),
+                    TopologyEmptyStatus::AwaitingTopology => (
+                        "Waiting for display information",
+                        "The session is connected. The host has not reported its monitors yet.",
+                        "",
+                        None,
+                    ),
+                    TopologyEmptyStatus::RequestTopology => (
+                        "No displays reported yet",
+                        "Connect to this computer to request its current display topology.",
+                        "Connect to computer",
+                        Some(Message::Action(UserAction::Connect(device.id.clone()))),
+                    ),
+                };
+                let mut prompt = column![
+                    text(label).size(tokens::BODY_SIZE),
+                    text(detail).size(tokens::META_SIZE).color(tokens::MUTED),
+                ]
+                .spacing(tokens::SPACE_2);
+                if let Some(action) = action {
+                    prompt = prompt.push(action_button(action_label, Some(action), false));
+                }
+                displays = displays.push(
+                    container(prompt)
+                        .padding(tokens::SPACE_3)
+                        .style(panel_style(tokens::CARD)),
+                );
+            }
             for display in &device.displays {
                 let is_selected = self.model.core.selected_display == Some(display.id);
                 let availability = if display.available {
@@ -2133,7 +2213,6 @@ impl App {
             _ => "Choose a remote device".to_owned(),
         };
         let session = self.model.core.telemetry.session;
-        let connected = session.last_rtt_us.is_some() || session.fps > 0.0;
         let subtitle = match (display, self.model.stream_dimensions) {
             (Some(display), Some((width, height))) => {
                 let rtt = session.last_rtt_us.map_or_else(
@@ -2162,7 +2241,7 @@ impl App {
             display.is_some(),
             display.is_some_and(|display| display.available),
             self.model.stream_dimensions.is_some(),
-            connected,
+            session.connection_state,
         );
         let header = container(
             column![
@@ -2210,10 +2289,10 @@ impl App {
         .width(Fill)
         .height(Fill);
         let empty_session = if !self.fake_idle
-            && self.frame_source.latest_frame().is_none()
+            && (self.frame_source.latest_frame().is_none() || display.is_none())
             && matches!(&self.model.overlay, SessionOverlay::None)
         {
-            empty_session_widget(device, display, connected)
+            empty_session_widget(device, display, session.connection_state)
         } else {
             iced::widget::Space::new().width(Fill).height(Fill).into()
         };
@@ -3017,12 +3096,27 @@ impl App {
                 container(
                     column![
                         telemetry_line("CPU", format!("{:.1}%", host.cpu_pct_x10 as f32 / 10.0)),
+                        telemetry_line(
+                            "Process",
+                            host.process_cpu_pct_x10.map_or_else(
+                                || "Unknown".to_owned(),
+                                |percent| format!("{:.1}%", percent as f32 / 10.0),
+                            ),
+                        ),
                         telemetry_line("Capture", format!("{:?}", host.capture_backend)),
                         telemetry_line("Encoder", format!("{:?}", host.encoder)),
                         telemetry_line("Resolution", format!("{}×{}", host.width, host.height)),
                         telemetry_line(
                             "Refresh",
                             format!("{:.0} Hz", host.refresh_mhz as f32 / 1_000.0)
+                        ),
+                        telemetry_line(
+                            "Target",
+                            format!("{:.1} Mbps", host.target_bitrate_kbps as f32 / 1_000.0),
+                        ),
+                        telemetry_line(
+                            "Host TX",
+                            format!("{:.1} Mbps", host.actual_bitrate_kbps as f32 / 1_000.0),
                         ),
                         telemetry_line("Codec", format!("{:?}", session.codec)),
                         telemetry_line("Decoder", format!("{:?}", session.decoder)),
@@ -3046,13 +3140,13 @@ impl App {
         let mut samples = self.frame_intervals_ms.clone();
         samples.sort_by(f64::total_cmp);
         if samples.is_empty() {
-            println!("m4b_measurement seconds={} telemetry_collapsed={} fake_idle={} frame_samples=0 median_ms=unavailable p95_ms=unavailable over_40ms=0 presentation_note=frame-source-update-proxy-not-physical-presents", self.measurement_secs.unwrap_or_default(), self.model.telemetry_sidebar_collapsed, self.fake_idle);
+            println!("frame_pacing_measurement seconds={} telemetry_collapsed={} fake_idle={} frame_samples=0 median_ms=unavailable p95_ms=unavailable over_40ms=0 presentation_note=frame-source-update-proxy-not-physical-presents", self.measurement_secs.unwrap_or_default(), self.model.telemetry_sidebar_collapsed, self.fake_idle);
             return;
         }
         let median = samples[samples.len() / 2];
         let p95 = samples[(samples.len() - 1) * 95 / 100];
         let over_40 = samples.iter().filter(|sample| **sample > 40.0).count();
-        println!("m4b_measurement seconds={} telemetry_collapsed={} fake_idle={} frame_samples={} median_ms={median:.2} p95_ms={p95:.2} over_40ms={over_40} presentation_note=frame-source-update-proxy-not-physical-presents", self.measurement_secs.unwrap_or_default(), self.model.telemetry_sidebar_collapsed, self.fake_idle, samples.len());
+        println!("frame_pacing_measurement seconds={} telemetry_collapsed={} fake_idle={} frame_samples={} median_ms={median:.2} p95_ms={p95:.2} over_40ms={over_40} presentation_note=frame-source-update-proxy-not-physical-presents", self.measurement_secs.unwrap_or_default(), self.model.telemetry_sidebar_collapsed, self.fake_idle, samples.len());
     }
 }
 
@@ -3302,11 +3396,32 @@ fn quality_controls(
     controls.into()
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TopologyEmptyStatus {
+    Offline,
+    HostUnavailable,
+    AwaitingTopology,
+    RequestTopology,
+}
+
+fn topology_empty_status(online: bool, host_capable: bool, connected: bool) -> TopologyEmptyStatus {
+    if !online {
+        TopologyEmptyStatus::Offline
+    } else if !host_capable {
+        TopologyEmptyStatus::HostUnavailable
+    } else if connected {
+        TopologyEmptyStatus::AwaitingTopology
+    } else {
+        TopologyEmptyStatus::RequestTopology
+    }
+}
+
 fn empty_session_widget(
     device: Option<&racc_core::DeviceSnapshot>,
     display: Option<&racc_core::DisplaySnapshot>,
-    connected: bool,
+    connection_state: racc_telemetry::ConnectionState,
 ) -> Element<'static, Message> {
+    let connected = connection_state == racc_telemetry::ConnectionState::Connected;
     let (state, color, title, detail, action) = match (device, display) {
         (None, _) => (
             "READY TO VIEW",
@@ -3315,6 +3430,47 @@ fn empty_session_widget(
             "Select a computer from the rail, or browse your tailnet to find an available host.",
             Some(("Browse computers", Message::Action(UserAction::Home))),
         ),
+        (Some(device), None) if device.displays.is_empty() => {
+            match topology_empty_status(device.online, device.host_capable, connected) {
+                TopologyEmptyStatus::Offline => (
+                    "COMPUTER OFFLINE",
+                    tokens::OFFLINE,
+                    "This computer is offline",
+                    "Reconnect it to Tailscale, then refresh the device list to request its displays.",
+                    Some((
+                        "Refresh devices",
+                        Message::Action(UserAction::DiscoverDevices),
+                    )),
+                ),
+                TopologyEmptyStatus::HostUnavailable => (
+                    "HOST UNAVAILABLE",
+                    tokens::MUTED,
+                    "Host agent not responding",
+                    "The computer is online, but its Racc Connect host agent has not answered yet.",
+                    Some((
+                        "Refresh devices",
+                        Message::Action(UserAction::DiscoverDevices),
+                    )),
+                ),
+                TopologyEmptyStatus::AwaitingTopology => (
+                    "TOPOLOGY PENDING",
+                    tokens::ACCENT,
+                    "Waiting for display information",
+                    "The session is connected. The host has not reported its monitors yet.",
+                    None,
+                ),
+                TopologyEmptyStatus::RequestTopology => (
+                    "TOPOLOGY PENDING",
+                    tokens::ACCENT,
+                    "Request this computer’s displays",
+                    "Connect to ask the host for its current monitors. The display list will appear here when the host responds.",
+                    Some((
+                        "Connect to computer",
+                        Message::Action(UserAction::Connect(device.id.clone())),
+                    )),
+                ),
+            }
+        }
         (Some(_), None) => (
             "DISPLAY REQUIRED",
             tokens::MUTED,
@@ -3453,8 +3609,9 @@ fn session_status(
     has_display: bool,
     display_available: bool,
     has_stream: bool,
-    connected: bool,
+    connection_state: racc_telemetry::ConnectionState,
 ) -> (&'static str, Color) {
+    let connected = connection_state == racc_telemetry::ConnectionState::Connected;
     match overlay {
         SessionOverlay::Connecting => ("CONNECTING", tokens::ACCENT),
         SessionOverlay::Switching => ("SWITCHING", tokens::ACCENT),
@@ -4290,6 +4447,40 @@ mod cli_tests {
     }
 
     #[test]
+    fn live_mode_supports_frame_pacing_measurements_and_sidebar_override() {
+        let options = parse(&[
+            "--connect",
+            "100.100.10.20:54831",
+            "--bind",
+            "100.100.10.21",
+            "--measure-secs=60",
+            "--telemetry-expanded",
+        ])
+        .unwrap();
+        assert_eq!(options.measure_secs, Some(60));
+        assert!(options.telemetry_expanded);
+        assert!(parse(&[
+            "--connect",
+            "100.100.10.20:54831",
+            "--bind",
+            "100.100.10.21",
+            "--measure-secs=60",
+            "--telemetry-expanded",
+            "--telemetry-collapsed",
+        ])
+        .is_err());
+        assert!(parse(&["--discover", "--measure-secs=60"]).is_err());
+        assert!(parse(&[
+            "--connect",
+            "100.100.10.20:54831",
+            "--bind",
+            "100.100.10.21",
+            "--measure-secs=0",
+        ])
+        .is_err());
+    }
+
+    #[test]
     fn debug_latency_overlay_is_opt_in_and_can_be_enabled_for_live_or_fake_mode() {
         assert!(!parse(&[]).unwrap().debug_latency);
         assert!(parse(&["--fake", "--debug-latency"]).unwrap().debug_latency);
@@ -4365,28 +4556,115 @@ mod cache_tests {
     fn session_status_distinguishes_ready_live_and_unavailable_states() {
         let none = SessionOverlay::None;
         assert_eq!(
-            session_status(&none, false, false, false, false, false, false).0,
+            session_status(
+                &none,
+                false,
+                false,
+                false,
+                false,
+                false,
+                racc_telemetry::ConnectionState::Disconnected,
+            )
+            .0,
             "NO DEVICE"
         );
         assert_eq!(
-            session_status(&none, true, false, true, true, false, false).0,
+            session_status(
+                &none,
+                true,
+                false,
+                true,
+                true,
+                false,
+                racc_telemetry::ConnectionState::Disconnected,
+            )
+            .0,
             "OFFLINE"
         );
         assert_eq!(
-            session_status(&none, true, true, false, false, false, false).0,
+            session_status(
+                &none,
+                true,
+                true,
+                false,
+                false,
+                false,
+                racc_telemetry::ConnectionState::Disconnected,
+            )
+            .0,
             "SELECT DISPLAY"
         );
         assert_eq!(
-            session_status(&none, true, true, true, true, false, false).0,
+            session_status(
+                &none,
+                true,
+                true,
+                true,
+                true,
+                false,
+                racc_telemetry::ConnectionState::Disconnected,
+            )
+            .0,
             "READY"
         );
         assert_eq!(
-            session_status(&none, true, true, true, true, true, true).0,
+            session_status(
+                &none,
+                true,
+                true,
+                true,
+                true,
+                true,
+                racc_telemetry::ConnectionState::Connected,
+            )
+            .0,
             "LIVE"
         );
         assert_eq!(
-            session_status(&SessionOverlay::Paused, true, true, true, true, true, true).0,
+            session_status(
+                &SessionOverlay::Paused,
+                true,
+                true,
+                true,
+                true,
+                true,
+                racc_telemetry::ConnectionState::Connected,
+            )
+            .0,
             "PAUSED"
+        );
+        assert_eq!(
+            session_status(
+                &none,
+                true,
+                true,
+                true,
+                true,
+                true,
+                racc_telemetry::ConnectionState::Disconnected,
+            )
+            .0,
+            "READY"
+        );
+    }
+
+    #[test]
+    fn topology_empty_status_distinguishes_offline_host_pending_and_connected() {
+        assert_eq!(
+            topology_empty_status(false, false, false),
+            TopologyEmptyStatus::Offline
+        );
+        assert_eq!(
+            topology_empty_status(true, false, false),
+            TopologyEmptyStatus::HostUnavailable
+        );
+        assert_eq!(
+            topology_empty_status(true, true, false),
+            TopologyEmptyStatus::RequestTopology
+        );
+        assert_eq!(
+            topology_empty_status(true, true, true),
+            TopologyEmptyStatus::AwaitingTopology
         );
     }
 
