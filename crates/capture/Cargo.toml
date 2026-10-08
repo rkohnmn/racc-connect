@@ -3,3 +3,29 @@ name = "racc-capture"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
+[dependencies]
+racc-topology = { path = "../topology" }
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58.0", features = [
+    "Win32_Foundation",
+    "Win32_Devices_Display",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_HiDpi",
+    "Win32_UI_WindowsAndMessaging",
+] }
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = { version = "0.6.2", default-features = false, features = ["alloc"] }
+dispatch2 = { version = "0.3.1", default-features = false, features = ["alloc", "objc2"] }
+objc2 = { version = "0.6.5", default-features = false, features = ["std"] }
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFDictionary", "CFString", "CFNumber"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSArray"] }
+objc2-core-media = { version = "0.3.2", default-features = false, features = ["std", "CMSampleBuffer", "CMTime", "objc2", "objc2-core-video"] }
+objc2-core-video = { version = "0.3.2", default-features = false, features = ["std", "CVBase", "CVBuffer", "CVImageBuffer", "CVPixelBuffer", "CVPixelBufferIOSurface", "CVReturn", "objc2-io-surface"] }
+objc2-screen-capture-kit = { version = "0.3.2", default-features = false, features = ["std", "SCShareableContent", "SCStream", "block2", "dispatch2", "objc2-core-foundation", "objc2-core-media", "objc2-core-graphics"] }
+objc2-core-graphics = { version = "0.3.2", default-features = false, features = ["std", "CGDirectDisplay", "CGDisplayStream", "CGError", "block2", "dispatch2", "objc2-io-surface"] }
+objc2-io-surface = { version = "0.3.2", default-features = false, features = ["std", "IOSurface", "IOSurfaceRef", "objc2", "objc2-core-foundation"] }

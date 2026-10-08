@@ -1,12 +1,15 @@
 use proptest::prelude::*;
 use racc_proto::{
     decode_control_frame, parse_cursor_datagram, parse_video_datagram, CaptureBackend,
-    ClipboardOrigin, ClipboardUpdate, ControlMessage, ControlPayload, CursorShape, CursorUpdate,
-    DisplayInfo, Encoder, FrameDecoder, Goodbye, GoodbyeReason, Hello, HelloAck, HelloStatus,
-    InputEvent, InputEventKind, OsType, PauseVideo, Ping, Pong, ProtoError, RequestKeyframe,
-    ResumeVideo, SetQuality, StatsReport, StreamCodec, StreamReset, StreamStatus, SwitchMonitor,
-    TopologyAnnounce, VideoDatagram, MAX_CLIPBOARD_BYTES, MAX_CONTROL_FRAME_BYTES, MAX_DATAGRAM,
-    MAX_DISPLAYS, MAX_FRAGMENTS_PER_FRAME, VIDEO_FLAG_LAST_FRAGMENT,
+    ClipboardOrigin, ClipboardSyncControl, ClipboardUpdate, ControlMessage, ControlPayload,
+    CursorShape, CursorUpdate, DisplayInfo, Encoder, FrameDecoder, Goodbye, GoodbyeReason, Hello,
+    HelloAck, HelloStatus, InputEvent, InputEventKind, LogicalClock, OsType, PauseVideo, Ping,
+    Pong, ProtoError, QualityAdjustment, QualityAdjustmentReason, RequestKeyframe, ResumeVideo,
+    SetQuality, StatsReport, StreamCodec, StreamReset, StreamStatus, SwitchMonitor,
+    TopologyAnnounce, VideoDatagram, ViewerReport, CLIPBOARD_LOGICAL_CLOCK_VERSION,
+    MAX_CLIPBOARD_BYTES, MAX_CLIPBOARD_LOGICAL_CLOCK, MAX_CONTROL_FRAME_BYTES, MAX_DATAGRAM,
+    MAX_DISPLAYS, MAX_FRAGMENTS_PER_FRAME, MAX_VIEWER_REPORT_DROPPED_FRAMES,
+    MAX_VIEWER_REPORT_DURATION_MS, PROTOCOL_VERSION, VIDEO_FLAG_LAST_FRAGMENT,
 };
 
 fn ascii_string() -> impl Strategy<Value = String> {
@@ -246,17 +249,27 @@ fn arb_control_message() -> impl Strategy<Value = ControlMessage> {
                 event,
             })
         }),
-        (any::<u32>(), any::<bool>(), ascii_string()).prop_map(|(seq, host_origin, text)| {
-            ControlMessage::ClipboardUpdate(ClipboardUpdate {
-                seq,
-                origin: if host_origin {
-                    ClipboardOrigin::Host
-                } else {
-                    ClipboardOrigin::Viewer
-                },
-                text,
-            })
-        }),
+        (
+            any::<u32>(),
+            any::<bool>(),
+            0u64..=MAX_CLIPBOARD_LOGICAL_CLOCK,
+            ascii_string()
+        )
+            .prop_map(|(seq, host_origin, counter, text)| {
+                ControlMessage::ClipboardUpdate(ClipboardUpdate {
+                    seq,
+                    origin: if host_origin {
+                        ClipboardOrigin::Host
+                    } else {
+                        ClipboardOrigin::Viewer
+                    },
+                    logical_clock: LogicalClock {
+                        version: CLIPBOARD_LOGICAL_CLOCK_VERSION,
+                        counter,
+                    },
+                    text,
+                })
+            }),
         (
             0u16..=1000,
             capture_backend,
@@ -303,10 +316,65 @@ fn arb_control_message() -> impl Strategy<Value = ControlMessage> {
                 height: 2,
                 hotspot_x,
                 hotspot_y,
+                blend_mode: racc_proto::CursorBlendMode::PremultipliedAlpha,
                 bgra: bgra.to_vec(),
             })
         ),
         goodbye.prop_map(|reason| ControlMessage::Goodbye(Goodbye { reason })),
+        any::<bool>().prop_map(|enabled| ControlMessage::ClipboardSyncControl(
+            ClipboardSyncControl { enabled }
+        )),
+        (any::<u16>(), 0u8..=4, any::<bool>()).prop_map(|(epoch, reason, downshift)| {
+            let (from_height, to_height, from_bitrate_bps, to_bitrate_bps) = if downshift {
+                (720, 480, 3_500_000, 1_500_000)
+            } else {
+                (720, 720, 3_500_000, 3_150_000)
+            };
+            let reason = if downshift {
+                match reason {
+                    0 => QualityAdjustmentReason::Loss,
+                    1 => QualityAdjustmentReason::RttInflation,
+                    2 => QualityAdjustmentReason::QueueOverflow,
+                    3 => QualityAdjustmentReason::Stable,
+                    _ => QualityAdjustmentReason::Preference,
+                }
+            } else {
+                QualityAdjustmentReason::BitrateTrim
+            };
+            ControlMessage::QualityAdjustment(QualityAdjustment {
+                epoch,
+                reason,
+                from_height,
+                to_height,
+                from_bitrate_bps,
+                to_bitrate_bps,
+            })
+        }),
+        (
+            any::<u16>(),
+            0u16..=1000,
+            0u16..=1000,
+            0u32..=MAX_VIEWER_REPORT_DURATION_MS,
+            0u32..=MAX_VIEWER_REPORT_DURATION_MS,
+            0u32..=MAX_VIEWER_REPORT_DROPPED_FRAMES
+        )
+            .prop_map(
+                |(
+                    epoch,
+                    loss_permille,
+                    frame_loss_permille,
+                    rtt_ms,
+                    decode_ms_p95,
+                    dropped_frames,
+                )| ControlMessage::ViewerReport(ViewerReport {
+                    epoch,
+                    loss_permille,
+                    frame_loss_permille,
+                    rtt_ms,
+                    decode_ms_p95,
+                    dropped_frames
+                })
+            ),
     ]
 }
 
@@ -331,6 +399,9 @@ fn invoke_all_decoders(bytes: &[u8]) {
     let _ = Pong::decode_payload(bytes);
     let _ = CursorShape::decode_payload(bytes);
     let _ = Goodbye::decode_payload(bytes);
+    let _ = ViewerReport::decode_payload(bytes);
+    let _ = ClipboardSyncControl::decode_payload(bytes);
+    let _ = QualityAdjustment::decode_payload(bytes);
     let mut decoder = FrameDecoder::new();
     let _ = decoder.feed(bytes, |_| {});
     assert!(decoder.buffer_capacity() <= MAX_CONTROL_FRAME_BYTES + 4);
@@ -421,35 +492,51 @@ fn frame_body(message: &ControlMessage) -> Vec<u8> {
 #[test]
 fn video_validation_rejects_malformed_datagrams() {
     assert_eq!(
-        parse_video_datagram(&raw_video(0, 0, 0, 1, 0, 0, &[1])),
+        parse_video_datagram(&raw_video(0, 0, PROTOCOL_VERSION, 1, 0, 0, &[1])),
         Err(ProtoError::InvalidValue)
     );
     assert_eq!(
-        parse_video_datagram(&raw_video(VIDEO_FLAG_LAST_FRAGMENT, 0, 0, 1, 1, 1, &[1])),
+        parse_video_datagram(&raw_video(
+            VIDEO_FLAG_LAST_FRAGMENT,
+            0,
+            PROTOCOL_VERSION,
+            1,
+            1,
+            1,
+            &[1]
+        )),
+        Err(ProtoError::InvalidValue)
+    );
+    assert_eq!(
+        parse_video_datagram(&raw_video(0, 0, PROTOCOL_VERSION, 1, 0, 1, &[1])),
+        Err(ProtoError::InvalidValue)
+    );
+    assert_eq!(
+        parse_video_datagram(&raw_video(0, 1, PROTOCOL_VERSION, 1, 0, 1, &[1])),
+        Err(ProtoError::InvalidValue)
+    );
+    assert_eq!(
+        parse_video_datagram(&raw_video(0x80, 0, PROTOCOL_VERSION, 1, 0, 1, &[1])),
         Err(ProtoError::InvalidValue)
     );
     assert_eq!(
         parse_video_datagram(&raw_video(0, 0, 0, 1, 0, 1, &[1])),
-        Err(ProtoError::InvalidValue)
-    );
-    assert_eq!(
-        parse_video_datagram(&raw_video(0, 1, 0, 1, 0, 1, &[1])),
-        Err(ProtoError::InvalidValue)
-    );
-    assert_eq!(
-        parse_video_datagram(&raw_video(0x80, 0, 0, 1, 0, 1, &[1])),
-        Err(ProtoError::InvalidValue)
-    );
-    assert_eq!(
-        parse_video_datagram(&raw_video(0, 0, 1, 1, 0, 1, &[1])),
         Err(ProtoError::UnsupportedVersion)
     );
     assert_eq!(
-        parse_video_datagram(&raw_video(0, 0, 0, 9, 0, 1, &[1])),
+        parse_video_datagram(&raw_video(0, 0, PROTOCOL_VERSION, 9, 0, 1, &[1])),
         Err(ProtoError::UnknownKind)
     );
     assert_eq!(
-        parse_video_datagram(&raw_video(VIDEO_FLAG_LAST_FRAGMENT, 0, 0, 1, 0, 1, &[])),
+        parse_video_datagram(&raw_video(
+            VIDEO_FLAG_LAST_FRAGMENT,
+            0,
+            PROTOCOL_VERSION,
+            1,
+            0,
+            1,
+            &[]
+        )),
         Err(ProtoError::InvalidValue)
     );
     assert_eq!(
@@ -457,7 +544,15 @@ fn video_validation_rejects_malformed_datagrams() {
         Err(ProtoError::TooLarge)
     );
 
-    let max_fragments = raw_video(VIDEO_FLAG_LAST_FRAGMENT, 0, 0, 1, 1023, 1024, &[1]);
+    let max_fragments = raw_video(
+        VIDEO_FLAG_LAST_FRAGMENT,
+        0,
+        PROTOCOL_VERSION,
+        1,
+        1023,
+        1024,
+        &[1],
+    );
     assert!(matches!(
         parse_video_datagram(&max_fragments),
         Ok(VideoDatagram::Video { .. })
@@ -467,7 +562,7 @@ fn video_validation_rejects_malformed_datagrams() {
         parse_video_datagram(&raw_video(
             VIDEO_FLAG_LAST_FRAGMENT,
             0,
-            0,
+            PROTOCOL_VERSION,
             1,
             1024,
             1025,
@@ -480,7 +575,7 @@ fn video_validation_rejects_malformed_datagrams() {
         parse_video_datagram(&raw_video(
             VIDEO_FLAG_LAST_FRAGMENT,
             0,
-            0,
+            PROTOCOL_VERSION,
             1,
             0,
             1,
@@ -544,7 +639,9 @@ fn control_length_utf8_enums_bits_and_boolean_validation() {
         .to_le_bytes();
     assert_eq!(decode_control_frame(&too_long), Err(ProtoError::TooLarge));
 
-    let mut clipboard = vec![11, 0, 0, 0, 0, 0, 1];
+    let mut clipboard = vec![11, 0, 0, 0, 0, 0, CLIPBOARD_LOGICAL_CLOCK_VERSION];
+    clipboard.extend_from_slice(&0u64.to_le_bytes());
+    clipboard.push(1);
     clipboard.extend_from_slice(
         &u32::try_from(MAX_CLIPBOARD_BYTES + 1)
             .unwrap()
@@ -558,14 +655,36 @@ fn control_length_utf8_enums_bits_and_boolean_validation() {
         ControlMessage::decode_body(&[1, 0, 129]),
         Err(ProtoError::TooLarge)
     );
-    let invalid_text = [11, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0xff];
+    let mut invalid_text = vec![11, 0, 0, 0, 0, 0, CLIPBOARD_LOGICAL_CLOCK_VERSION];
+    invalid_text.extend_from_slice(&0u64.to_le_bytes());
+    invalid_text.push(1);
+    invalid_text.extend_from_slice(&1u32.to_le_bytes());
+    invalid_text.push(0xff);
     assert_eq!(
         ControlMessage::decode_body(&invalid_text),
         Err(ProtoError::InvalidUtf8)
     );
 
+    let mut unsupported_clock = vec![11, 0, 0, 0, 0, 0, 2];
+    unsupported_clock.extend_from_slice(&0u64.to_le_bytes());
+    unsupported_clock.push(1);
+    unsupported_clock.extend_from_slice(&0u32.to_le_bytes());
+    assert_eq!(
+        ControlMessage::decode_body(&unsupported_clock),
+        Err(ProtoError::InvalidValue)
+    );
+
+    let mut oversized_clock = vec![11, 0, 0, 0, 0, 0, CLIPBOARD_LOGICAL_CLOCK_VERSION];
+    oversized_clock.extend_from_slice(&(MAX_CLIPBOARD_LOGICAL_CLOCK + 1).to_le_bytes());
+    oversized_clock.push(1);
+    oversized_clock.extend_from_slice(&0u32.to_le_bytes());
+    assert_eq!(
+        ControlMessage::decode_body(&oversized_clock),
+        Err(ProtoError::InvalidValue)
+    );
+
     let mut bad_os = frame_body(&ControlMessage::Hello(Hello {
-        protocol_version: 0,
+        protocol_version: PROTOCOL_VERSION,
         device_name: String::new(),
         os: OsType::Unknown,
         app_version: String::new(),
@@ -581,7 +700,7 @@ fn control_length_utf8_enums_bits_and_boolean_validation() {
     );
 
     let mut bad_codec_bits = frame_body(&ControlMessage::Hello(Hello {
-        protocol_version: 0,
+        protocol_version: PROTOCOL_VERSION,
         device_name: String::new(),
         os: OsType::Unknown,
         app_version: String::new(),
@@ -657,7 +776,10 @@ fn control_length_utf8_enums_bits_and_boolean_validation() {
         Err(ProtoError::InvalidValue)
     );
 
-    let mut bad_clip_origin = vec![11, 0, 0, 0, 0, 2, 1, 0, 0, 0, 0];
+    let mut bad_clip_origin = vec![11, 0, 0, 0, 0, 2, 1];
+    bad_clip_origin.extend_from_slice(&0u64.to_le_bytes());
+    bad_clip_origin.push(1);
+    bad_clip_origin.extend_from_slice(&0u32.to_le_bytes());
     assert_eq!(
         ControlMessage::decode_body(&bad_clip_origin),
         Err(ProtoError::InvalidValue)
@@ -670,7 +792,7 @@ fn control_length_utf8_enums_bits_and_boolean_validation() {
     );
 
     let mut bad_ack = frame_body(&ControlMessage::HelloAck(HelloAck {
-        protocol_version: 0,
+        protocol_version: PROTOCOL_VERSION,
         status: HelloStatus::Ok,
         device_name: String::new(),
         os: OsType::Unknown,
@@ -687,7 +809,7 @@ fn control_length_utf8_enums_bits_and_boolean_validation() {
     );
 
     let mut bad_features = frame_body(&ControlMessage::Hello(Hello {
-        protocol_version: 0,
+        protocol_version: PROTOCOL_VERSION,
         device_name: String::new(),
         os: OsType::Unknown,
         app_version: String::new(),
@@ -772,6 +894,15 @@ fn control_length_utf8_enums_bits_and_boolean_validation() {
         ControlMessage::decode_body(&bad_cpu),
         Err(ProtoError::InvalidValue)
     );
+    assert_eq!(
+        ControlMessage::decode_body(&[18]),
+        Err(ProtoError::Truncated)
+    );
+    assert_eq!(
+        ControlMessage::decode_body(&[18, 2]),
+        Err(ProtoError::InvalidValue)
+    );
+
     let mut bad_goodbye = frame_body(&ControlMessage::Goodbye(Goodbye {
         reason: GoodbyeReason::Normal,
     }));
@@ -882,6 +1013,7 @@ fn topology_and_cursor_shape_bounds_are_checked() {
         height: 1,
         hotspot_x: 0,
         hotspot_y: 0,
+        blend_mode: racc_proto::CursorBlendMode::PremultipliedAlpha,
         bgra: vec![0; 4],
     });
     assert_eq!(
@@ -894,6 +1026,7 @@ fn topology_and_cursor_shape_bounds_are_checked() {
         height: 2,
         hotspot_x: 0,
         hotspot_y: 0,
+        blend_mode: racc_proto::CursorBlendMode::PremultipliedAlpha,
         bgra: vec![0; 15],
     });
     assert_eq!(
@@ -907,6 +1040,7 @@ fn topology_and_cursor_shape_bounds_are_checked() {
     oversized_dims.extend_from_slice(&u16::MAX.to_le_bytes());
     oversized_dims.extend_from_slice(&0u16.to_le_bytes());
     oversized_dims.extend_from_slice(&0u16.to_le_bytes());
+    oversized_dims.push(0);
     assert_eq!(
         ControlMessage::decode_body(&oversized_dims),
         Err(ProtoError::InvalidValue)
@@ -918,6 +1052,7 @@ fn topology_and_cursor_shape_bounds_are_checked() {
     short_bitmap.extend_from_slice(&2u16.to_le_bytes());
     short_bitmap.extend_from_slice(&0u16.to_le_bytes());
     short_bitmap.extend_from_slice(&0u16.to_le_bytes());
+    short_bitmap.push(0);
     short_bitmap.extend_from_slice(&[0; 15]);
     assert_eq!(
         ControlMessage::decode_body(&short_bitmap),
@@ -931,12 +1066,26 @@ fn topology_and_cursor_shape_bounds_are_checked() {
         Err(ProtoError::TrailingBytes)
     );
 
+    let mut bad_blend_mode = vec![15];
+    bad_blend_mode.extend_from_slice(&1u32.to_le_bytes());
+    bad_blend_mode.extend_from_slice(&1u16.to_le_bytes());
+    bad_blend_mode.extend_from_slice(&1u16.to_le_bytes());
+    bad_blend_mode.extend_from_slice(&0u16.to_le_bytes());
+    bad_blend_mode.extend_from_slice(&0u16.to_le_bytes());
+    bad_blend_mode.push(3);
+    bad_blend_mode.extend_from_slice(&[0; 4]);
+    assert_eq!(
+        ControlMessage::decode_body(&bad_blend_mode),
+        Err(ProtoError::InvalidValue)
+    );
+
     let bad_hotspot = ControlMessage::CursorShape(CursorShape {
         shape_id: 1,
         width: 1,
         height: 1,
         hotspot_x: 1,
         hotspot_y: 0,
+        blend_mode: racc_proto::CursorBlendMode::PremultipliedAlpha,
         bgra: vec![0; 4],
     });
     assert_eq!(
@@ -1033,10 +1182,98 @@ fn incremental_decoder_handles_arbitrary_chunk_boundaries_and_bounds_memory() {
 }
 
 #[test]
+fn viewer_report_rejects_out_of_range_feedback() {
+    let valid = ControlMessage::ViewerReport(ViewerReport {
+        epoch: 1,
+        loss_permille: 1,
+        frame_loss_permille: 2,
+        rtt_ms: 3,
+        decode_ms_p95: 4,
+        dropped_frames: 5,
+    });
+    let mut loss = frame_body(&valid);
+    loss[3..5].copy_from_slice(&1001u16.to_le_bytes());
+    assert_eq!(
+        ControlMessage::decode_body(&loss),
+        Err(ProtoError::InvalidValue)
+    );
+    let mut frame_loss = frame_body(&valid);
+    frame_loss[5..7].copy_from_slice(&1001u16.to_le_bytes());
+    assert_eq!(
+        ControlMessage::decode_body(&frame_loss),
+        Err(ProtoError::InvalidValue)
+    );
+    let mut rtt = frame_body(&valid);
+    rtt[7..11].copy_from_slice(&(MAX_VIEWER_REPORT_DURATION_MS + 1).to_le_bytes());
+    assert_eq!(
+        ControlMessage::decode_body(&rtt),
+        Err(ProtoError::InvalidValue)
+    );
+    let mut decode = frame_body(&valid);
+    decode[11..15].copy_from_slice(&(MAX_VIEWER_REPORT_DURATION_MS + 1).to_le_bytes());
+    assert_eq!(
+        ControlMessage::decode_body(&decode),
+        Err(ProtoError::InvalidValue)
+    );
+    let mut dropped = frame_body(&valid);
+    dropped[15..19].copy_from_slice(&(MAX_VIEWER_REPORT_DROPPED_FRAMES + 1).to_le_bytes());
+    assert_eq!(
+        ControlMessage::decode_body(&dropped),
+        Err(ProtoError::InvalidValue)
+    );
+}
+
+#[test]
+fn encoders_reject_out_of_range_clock_and_viewer_report_values() {
+    let mut encoded = Vec::new();
+    let invalid_clock_version = ControlMessage::ClipboardUpdate(ClipboardUpdate {
+        seq: 1,
+        origin: ClipboardOrigin::Viewer,
+        logical_clock: LogicalClock {
+            version: CLIPBOARD_LOGICAL_CLOCK_VERSION + 1,
+            counter: 0,
+        },
+        text: String::new(),
+    });
+    assert_eq!(
+        invalid_clock_version.encode_frame(&mut encoded),
+        Err(ProtoError::InvalidValue)
+    );
+
+    let invalid_clock_counter = ControlMessage::ClipboardUpdate(ClipboardUpdate {
+        seq: 1,
+        origin: ClipboardOrigin::Viewer,
+        logical_clock: LogicalClock {
+            version: CLIPBOARD_LOGICAL_CLOCK_VERSION,
+            counter: MAX_CLIPBOARD_LOGICAL_CLOCK + 1,
+        },
+        text: String::new(),
+    });
+    assert_eq!(
+        invalid_clock_counter.encode_frame(&mut encoded),
+        Err(ProtoError::InvalidValue)
+    );
+    assert!(LogicalClock::new(MAX_CLIPBOARD_LOGICAL_CLOCK + 1).is_err());
+
+    let invalid_report = ControlMessage::ViewerReport(ViewerReport {
+        epoch: 1,
+        loss_permille: 1001,
+        frame_loss_permille: 0,
+        rtt_ms: 0,
+        decode_ms_p95: 0,
+        dropped_frames: 0,
+    });
+    assert_eq!(
+        invalid_report.encode_frame(&mut encoded),
+        Err(ProtoError::InvalidValue)
+    );
+}
+
+#[test]
 fn control_message_truncations_are_rejected() {
     for message in [
         ControlMessage::Hello(Hello {
-            protocol_version: 0,
+            protocol_version: PROTOCOL_VERSION,
             device_name: "x".into(),
             os: OsType::Unknown,
             app_version: "v".into(),
@@ -1056,6 +1293,7 @@ fn control_message_truncations_are_rejected() {
             height: 1,
             hotspot_x: 0,
             hotspot_y: 0,
+            blend_mode: racc_proto::CursorBlendMode::PremultipliedAlpha,
             bgra: vec![0; 4],
         }),
     ] {

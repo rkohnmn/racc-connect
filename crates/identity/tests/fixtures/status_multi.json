@@ -1,0 +1,47 @@
+{
+  "BackendState": "Running",
+  "Version": "1.84.0",
+  "Self": {
+    "ID": "self-a",
+    "HostName": "host-a",
+    "DNSName": "host-a.example.ts.net.",
+    "TailscaleIPs": ["192.0.2.10", "2001:db8::10"],
+    "Online": true
+  },
+  "User": {
+    "17": {"ID": 17, "LoginName": "owner-a"}
+  },
+  "Peer": {
+    "node-b": {
+      "ID": "node-b",
+      "HostName": "host-b",
+      "DNSName": "host-b.example.ts.net.",
+      "TailscaleIPs": ["198.51.100.20"],
+      "OS": "windows",
+      "Online": true,
+      "CurAddr": "203.0.113.4:41641",
+      "Relay": "",
+      "Tags": ["tag:viewer"],
+      "UserID": 17
+    },
+    "node-c": {
+      "ID": 23,
+      "HostName": "host-c",
+      "TailscaleIPs": ["198.51.100.30"],
+      "OS": "macOS",
+      "Online": true,
+      "CurAddr": "",
+      "Relay": "nyc",
+      "Tags": ["tag:host"]
+    },
+    "node-d": {
+      "ID": "node-d",
+      "HostName": "host-d",
+      "TailscaleIPs": ["198.51.100.40"],
+      "Online": false,
+      "CurAddr": "",
+      "Relay": ""
+    }
+  },
+  "FutureField": {"unknown": true}
+}

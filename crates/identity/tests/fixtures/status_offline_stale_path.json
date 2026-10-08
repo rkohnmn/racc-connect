@@ -1,0 +1,12 @@
+{
+  "BackendState": "Running",
+  "Peer": {
+    "node-offline": {
+      "ID": "node-offline",
+      "HostName": "host-offline",
+      "Online": false,
+      "CurAddr": "203.0.113.99:41641",
+      "Relay": "sea"
+    }
+  }
+}

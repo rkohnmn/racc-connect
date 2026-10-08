@@ -7,11 +7,25 @@ publish.workspace = true
 [features]
 default = ["fake-core"]
 fake-core = ["dep:racc-core", "dep:racc-telemetry", "dep:racc-topology"]
+probe = ["dep:racc-session"]
+probe-loopback = ["probe", "racc-net/test-bind"]
+host-loopback = ["probe-loopback", "racc-core/loopback-test", "dep:racc-topology"]
+
+[[bin]]
+name = "racc-probe"
+path = "src/bin/racc_probe.rs"
+required-features = ["probe"]
+
+[[example]]
+name = "host-loopback"
+path = "examples/host_loopback.rs"
+required-features = ["host-loopback"]
 
 [dependencies]
 racc-core = { path = "../core", optional = true }
 racc-net = { path = "../net" }
 racc-proto = { path = "../proto" }
+racc-session = { path = "../session", optional = true }
 racc-telemetry = { path = "../telemetry", optional = true }
 racc-topology = { path = "../topology", optional = true }
 

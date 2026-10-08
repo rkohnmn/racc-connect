@@ -25,34 +25,83 @@ Specifications below were supplied by the owner on 2026-10-06 and have not been 
 - [VERIFIED-RUN] NVIDIA GeForce RTX 3050 Ti Laptop GPU, driver 32.0.15.9571; AMD Radeon(TM) Graphics, driver 31.0.21923.11000. Virtual display adapters were also reported.
 - [VERIFIED-RUN] This machine matches Windows PC #1 (laptop) by the NVIDIA GeForce RTX 3050 Ti GPU.
 - [VERIFIED-RUN] Rust: rustc 1.95.0 (59807616e 2026-04-14); Cargo 1.95.0 (f2d3ce0bd 2026-03-21).
-- [VERIFIED-RUN] Tailscale is not installed or available on PATH.
+- [VERIFIED-RUN] On 2026-10-06 Tailscale was not on PATH; the standard Program Files location had not yet been checked. The 2026-10-07 M5c probe found the installed CLI and verified live behavior below.
 - [VERIFIED-RUN] Windows display API reported 3 active displays, each at 1920×1080.
+
+## 2026-10-07 — M5a redacted display metadata probe (Windows PC #1)
+
+- [VERIFIED-RUN] Ran `cargo run --offline -p racc-capture --example capture_probe -- --list`. This enumerated display metadata only; it did not start capture, acquire desktop frames, or read pixels. The output intentionally omitted display names, connector paths, and adapter LUIDs.
+- [VERIFIED-RUN] All three active outputs are driven by the integrated AMD Radeon(TM) Graphics adapter. Each reports 1920×1080 and `scale_milli=1000`; two report 60,000 mHz and one reports 240,000 mHz. The redacted output ordering was:
+
+| Redacted output | Desktop origin | Size | Active refresh | Scale | Adapter | Identity source |
+|---|---:|---:|---:|---:|---|---|
+| A | (0, 0) | 1920×1080 | 240,000 mHz | 1000 | AMD Radeon(TM) Graphics | Connector path |
+| B | (-1920, 4) | 1920×1080 | 60,000 mHz | 1000 | AMD Radeon(TM) Graphics | Connector path |
+| C | (-984, -1080) | 1920×1080 | 60,000 mHz | 1000 | AMD Radeon(TM) Graphics | Connector path |
+
+- [HUMAN-PENDING] Capture performance, copy/scaling completion, cross-adapter encoding, cursor shape pixels/hotspots, and migration timing were not measured. Do not run capture modes until the visible screen is clear for capture; never capture the lock or UAC desktop.
 
 ## M5 — Windows capture and encode
 
+- [VERIFIED-RUN — SYNTHETIC ONLY] On PC #1, Media Foundation encoded 90 synthetic 1280×720 frames as H.264 Main; ffprobe found 90 frames and no B-frames, and ffmpeg decoded the full stream. The elementary stream lacks timestamps, so this is not a measured 30 fps cadence or a real desktop-capture test. See `docs/ENCODE.md`.
+
+- [VERIFIED-RUN] Metadata-only `capture_probe --list` on PC #1 confirmed the adapter/mode table above; this does not count as a frame-capture test.
+- [ ] [HUMAN-PENDING] After clearing visible-screen privacy, run `cargo run -p racc-capture --example capture_probe -- --sample DISPLAY_ID --seconds 10 --acknowledge-visible-screen` on each output for static and moving-content runs; record frame counts, p50/p95, and drops. Add `--migrate-to TARGET_DISPLAY_ID` for migration timing.
+- [ ] [HUMAN-PENDING] Run the same capture sample on PC #2 and verify recovery after a display mode change. Do not capture a lock/UAC screen; secure-desktop checks belong to the owner-run service checklist.
 - [ ] [HUMAN-PENDING] Record the Windows PC GPU and driver; verify capture and H.264 encode using the available NVENC, QSV, and/or AMF paths.
 - [ ] [HUMAN-PENDING] Play the recorded H.264 output and verify recovery after a display mode change.
 
+## M5c — Tailscale identity and discovery (Windows PC #1)
+
+- [VERIFIED-RUN] Read-only Tailscale CLI probe on 2026-10-07: version 1.102.4; 2/2 peers online; aggregate path counts 0 direct and 2 DERP; self-bind address passed the Tailscale bind policy.
+- [VERIFIED-RUN] Twenty status calls measured approximately 210 ms median / 339 ms p95. Whois succeeded 20/20 times at approximately 217 ms median / 439 ms p95.
+- No names, addresses, node identifiers, login names, raw JSON, or DERP region names are recorded.
+- [HUMAN-PENDING] Repeat aggregate live checks on PC #2 and the Monterey Mac. Verify allowlist pending/approve/reject/reconnect end-to-end after M6 exists.
+
 ## M6 — Windows host agent
 
-- [ ] [HUMAN-PENDING] Verify the service and capture helper across lock screen, UAC, logoff/logon, and fast user switching.
-- [ ] [HUMAN-PENDING] Verify real Tailscale LocalAPI whois allowlisting and approval behavior.
+The SCM dispatcher, active-session helper launcher, foreground Windows host, and named-pipe IPC server/handler are present in source. The handler serves live status and persistence-backed allowlist operations; `SetHostingEnabled` returns `Failure(Unavailable)` because safe stop/rebind support is not wired. Host-agent tests passed TESTED-FAKE, and the Windows target passed COMPILE-ONLY. The service was not installed, registered, or started by the agent, and the named pipe was not launched or inspected. The host loop, SCM notifications, helper-token launch, real capture, allowlist/Tailscale path, and clipboard OS operations have not been run. The helper uses WinSta0\Default and reports secure-desktop capture unavailable; it does not switch onto the Winlogon desktop. The Windows Graphics Capture fallback is also absent.
 
+- [ ] [HUMAN-PENDING] Run root setup-windows.ps1 elevated on both Windows PCs to build and install the current release, then verify service status and automatic startup. Test uninstall and confirm clean removal separately; the script has not yet been run on either PC.
+- [ ] [HUMAN-PENDING — PROBE SOURCE INTEGRATED] On the other Windows PC, run `racc-probe` against the host over Tailscale and record aggregate frames, bytes, FPS, loss, RTT, and direct/DERP path without peer identifiers. `racc-probe` and a separate synthetic `host-loopback` harness now exist; the loopback harness does not prove real capture, encoding, or tailnet behavior.
+- [ ] [HUMAN-PENDING — APP AND IPC SOURCE INTEGRATED] Start the foreground helper with `racc-host-agent console` (or the human-installed helper) and verify the app receives `GetStatus`, approved-list retrieval, pending snapshot/add/remove notifications, and approve/reject/remove actions. Confirm the pending subscription reconnects and applies a fresh snapshot. Confirm `SetHostingEnabled` returns `Failure(Unavailable)` and does not change reported state. The named pipe has not been launched or inspected.
+- [ ] [HUMAN-PENDING — PIPE ACL RUNTIME CHECK] On each Windows PC, inspect the running pipe DACL and verify only SYSTEM, Administrators, and Interactive Users are granted access; verify a remote pipe client is rejected. The source SDDL is `D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;IU)` and the server uses `PIPE_REJECT_REMOTE_CLIENTS`.
+- [ ] [HUMAN-PENDING] Verify service/helper behavior through lock/unlock, UAC, logoff/logon, fast user switching, console/RDP session changes if used, and a manually killed helper. Do not expose private content. Confirm lock/UAC produces an explicit unavailable status and capture recovers after returning to the default desktop; do not claim secure-desktop capture.
+- [ ] [HUMAN-PENDING] Record idle host private memory with hosting enabled and no viewer, then host CPU time/private memory at 720p30 and 1080p30 during a real stream. No measurements have been taken.
+- [ ] [HUMAN-PENDING — BLOCKED ON END-TO-END STREAM] Validate one-second StatsReport fields against live host/viewer behavior and compare RTT to tailscale ping. Current code reports machine-wide CPU, DXGI/encoder, resolution/refresh, configured target bitrate, and successfully sent Racc UDP datagram bitrate; it excludes UDP/IP overhead.
 ## M7 — Viewer and input
+
+M7 source status: [TESTED-FAKE] Host-agent tests cover authenticated connection/epoch/display validation, valid injection through a fake injector, held-input release, reset reauthorization, and nonblocking behavior under queue saturation. The live app now has discovery-first peer selection, ViewerRuntime, Windows Media Foundation decoder selection, VideoToolbox selection on macOS, and a separate latest-frame/wgpu NV12 path. [COMPILE-ONLY] The full Windows workspace target passes. No remote session or real OS input was run; Windows decoding returns CPU NV12 planes and does not establish DXVA. The host worker uses the last announced topology; no live topology-change event source is connected. M7 remains incomplete.
 
 - [ ] [HUMAN-PENDING] Verify monitor hot-switching across displays with different resolutions and DPI.
 - [ ] [HUMAN-PENDING] Measure LAN latency with a photodiode, high-speed camera, or on-screen timestamp overlay and record the method.
 - [ ] [HUMAN-PENDING] Verify keyboard layouts beyond US and international input edge cases.
 - [ ] [HUMAN-PENDING] Verify real Tailscale direct and DERP path behavior.
+- [ ] [HUMAN-PENDING] Run the prompt's 30-second Windows host-loopback plus real DDA/hardware-decoder viewer scenario: switch display, pause/resume, quality change, kill/reconnect, and record the actual frame path and resource costs. Do not capture private visible content without clearing the screen first.
+- [ ] [HUMAN-PENDING] Compare virtual-desktop absolute pointer injection against `SetCursorPos` at every monitor corner and center; record the chosen default and mapping error.
+- [ ] [HUMAN-PENDING] Verify two-PC sessions in both directions, mixed-DPI displays, input layouts, drag/wheel, release after disconnect, pause, switch/reset, and helper shutdown, minimized pause/resume, rapid switching, network unplug/reconnect, 30-minute soak, and camera-based glass-to-glass latency at all tiers.
 
 ## M8 — Clipboard and telemetry
 
-- [ ] [HUMAN-PENDING] Verify text clipboard synchronization end-to-end on the tailnet.
-
+- [ ] [HUMAN-PENDING] With both Windows PCs available, run non-private text round trips in both directions using non-ASCII text, repeated copies, exactly 512 KiB, and a value over 512 KiB. Confirm the larger value is rejected and clipboard text is absent from logs and telemetry.
+- [ ] [HUMAN-PENDING] Verify CONTROL > Clipboard is off by default, reads/writes only after the active-session toggle is enabled, stops future transfers immediately on disable, and clears pending values when the viewer disconnects or reconnects. Verify the authenticated host receives the explicit enable/disable signal.
+- [ ] [HUMAN-PENDING — M8 LIVE FIELD/PACING CHECK] Compare live RTT, route, loss, bitrate, FPS, codec/decoder, host CPU/capture/encoder and event entries with their sources. Measure real frame-interval p95 with the telemetry sidebar on and off.
+- [ ] [HUMAN-PENDING — MAC SOURCE INTEGRATED; APPLE HOST CHECK BLOCKED] On the 2015 Mac, verify text-only clipboard round trips in both directions with a Windows peer as viewer and as host. Check disabled-by-default behavior, enable/disable/disconnect/reconnect gating, Unicode, exactly 512 KiB and over-limit rejection, echo prevention, and that clipboard contents never appear in logs or telemetry. No Mac runtime has been exercised; see `docs/CLIPBOARD.md` and ADR 0041.
+- [ ] [HUMAN-PENDING — END-TO-END STREAM/UI] Compare live RTT to tailscale ping, check path, loss, bitrate, FPS, codec/decoder and host telemetry against their source, and verify the event list. Record a real frame-interval p95 with telemetry sidebar updates on and off; no such measurement is available yet.
 ## M9 — 2015 Intel Mac
 
-- [ ] [HUMAN-PENDING] Record macOS version and ScreenCaptureKit availability.
-- [ ] [HUMAN-PENDING] Measure sustained VideoToolbox 720p30 and 1080p30, temperature, dropped frames, and permission prompts.
+The macOS capture, input, VideoToolbox encode/decode, foreground host, app viewer, text clipboard paths, Settings permission panel, per-user Unix-socket IPC, machine-wide CPU sampler, and LaunchAgent scripts/template are source-integrated as recorded in `docs/MACOS.md`. App/capture/input checks and the app strict Clippy pass for the Apple target; the full foreground-host check stops in OpenH264 because target C++ tooling is unavailable. No Mac runtime is verified. The same-user IPC checks and LaunchAgent install/uninstall have not been exercised on the Mac. ADR 0042 selects pointer-in-video on Mac and hidden cursor metadata to avoid a second viewer cursor; confirm both capture paths on hardware. Keep host output at 720p30 until sustained Mac testing supports a higher tier; the product maximum remains 1080p30.
+
+- [ ] [HUMAN-PENDING] Confirm exact Mac model/year in About This Mac and record `sw_vers`, `uname -a`, CPU/GPU, Xcode Command Line Tools, Rust target, and Tailscale app version. Current device details are owner-reported.
+- [ ] [HUMAN-PENDING — SETTINGS UI SOURCE-INTEGRATED] On Monterey, verify Screen Recording missing/granted/revoked status, the explicit button's System Settings destination, and capture's typed permission failure instead of silent black video. The app does not prompt automatically.
+- [ ] [HUMAN-PENDING — SOURCE INTEGRATED; APPLE HOST BUILD BLOCKED] Exercise ScreenCaptureKit and CGDisplayStream fallback with approved content at 480p30, default 720p30, and 1080p30. Record frame intervals, drops, latency, CPU/private memory, verify the pointer is baked into captured video without a duplicate overlay, and test display migration/removal and sleep/wake recovery. Do not capture lock/UAC screens or other private content without the owner's explicit review.
+- [ ] [HUMAN-PENDING — SOURCE INTEGRATED; APPLE BUILD/RUNTIME UNVERIFIED] Test VideoToolbox encode/decode and wgpu presentation at supported tiers. Record hardware-acceleration and low-latency property results, bitrate, IDR response, parameter sets, B-frame inspection, upload cost, frame intervals, drops, CPU, and temperature. Run a sustained ten-minute 720p30 test before considering a higher default.
+- [ ] [HUMAN-PENDING — SETTINGS UI SOURCE-INTEGRATED] On Monterey, verify Accessibility missing/granted/revoked status and that the explicit button opens the correct privacy pane. Under owner supervision, inject harmless input and check corners/center on the built-in and an external display, supported keyboard layouts, mouse buttons, drag, wheel, and release-on-disconnect.
+- [ ] [HUMAN-PENDING — MAC CLIPBOARD SOURCE INTEGRATED; APPLE HOST CHECK BLOCKED] Verify NSPasteboard viewer and foreground-host paths with Windows peers in both directions. Include text-only Unicode, 512 KiB boundary, explicit opt-in, immediate disable and reconnect reset, echo suppression, and content-free logs. Capability is advertised by the Mac host only because the host bridge is wired; this is not evidence of runtime behavior.
+- [ ] [HUMAN-PENDING — SOURCE INTEGRATED; NOT INSTALLED] Run the provided LaunchAgent install/start-at-login/kill/restart/uninstall scripts and verify the user-private Unix socket ownership/mode, data paths, sleep/wake, screen lock, and logged-out behavior. The fixed-message 1 MiB logger is source-integrated; verify the file and directory permissions on the Mac.
+- [ ] [HUMAN-PENDING — END-TO-END] Run as host and viewer with each Windows PC over Tailscale. Verify allowlist authorization, display switch, pause/resume, clipboard/input paths, telemetry, and ten-minute thermal/drop counts. Confirm one-second StatsReport reports the actual capture backend, VideoToolbox, resolution, refresh, target bitrate, sent UDP payload bitrate, and machine-wide CPU after the first valid tick interval. No Mac runtime or hardware result is currently verified.
+
+- [ ] [HUMAN-PENDING — CURSOR SOURCE-INTEGRATED] On the Mac, confirm both ScreenCaptureKit and CGDisplayStream include the pointer in captured video and confirm the viewer does not draw a second cursor. The M9 Mac cursor rule is recorded in ADR 0042; Windows continues to use separate cursor metadata.
 
 ## M2 — Transport
 
@@ -81,3 +130,13 @@ The owner reports that the current UI is weak and cannot inspect screens now. Th
 - [ ] [HUMAN-PENDING] Check session/host telemetry and event-log readability while the stream runs; report any visible jank or layout disturbance during updates.
 - [ ] [HUMAN-PENDING] Confirm Audio is visibly disabled and marked “not supported.” Note any accessibility or screen-reader issues; the current UI does not assign explicit accessible names/roles.
 - [ ] [HUMAN-PENDING] Tell the agent what visual or interaction changes to make. M4b remains pending until the requested iterations are reviewed.
+
+
+## M10 — Polish and packaging
+
+- [ ] [HUMAN-PENDING] Run root setup-windows.ps1 to install prerequisites, build the portable package and Inno installer, and install on each Windows PC. Separately install/uninstall on a clean Windows 10 VM and verify service, firewall, Start Menu, autostart and data cleanup behavior; record prompts.
+- [ ] [HUMAN-PENDING] Run root setup-macos.sh on the Mac to build/install the `.app` and current-user LaunchAgents. Verify ad-hoc signing and permission usage strings, test startup/removal with the integrated Unix-socket IPC, and record Gatekeeper behavior. Do not use signing credentials autonomously.
+- [ ] [HUMAN-PENDING] Verify tray open/close/quit behavior, single-instance activation, autostart toggles, geometry restoration across display changes, and local IPC behavior. The Windows host currently returns `Unavailable` for hosting enable/disable because its helper cannot safely stop and rebind; confirm that visible response.
+- [x] [VERIFIED-RUN — WINDOWS PC #1; 2026-10-07] Final source rebuild: app 12,371,456 B, host-agent 1,876,480 B, portable ZIP 5,644,455 B. ZIP SHA-256: `d8e42189f915329413cc17540be5850762427f4f200a717b5d0a31fdc6e2900e`. Independently confirmed with `Get-FileHash`; not installed or run as a release app.
+- [ ] [HUMAN-PENDING] Measure release app/host-agent idle private memory and complete the requested 24-hour stability soak.
+- [ ] [OWNER DECISION] Choose a project license and confirm personal-only or broader distribution. Review the Noto Emoji license question in `docs/OPEN_QUESTIONS.md`; no Noto artwork is shipped.

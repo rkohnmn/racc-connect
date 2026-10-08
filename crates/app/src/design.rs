@@ -9,13 +9,17 @@ pub mod tokens {
     /// Device rail width in logical pixels.
     pub const DEVICE_RAIL_WIDTH: f32 = 72.0;
     /// Device sidebar width in logical pixels.
-    pub const DEVICE_SIDEBAR_WIDTH: f32 = 240.0;
+    pub const DEVICE_SIDEBAR_WIDTH: f32 = 264.0;
     /// Telemetry sidebar width in logical pixels.
-    pub const TELEMETRY_WIDTH: f32 = 280.0;
+    pub const TELEMETRY_WIDTH: f32 = 300.0;
     /// Collapsed sidebar width in logical pixels.
     pub const COLLAPSED_SIDEBAR_WIDTH: f32 = 48.0;
     /// Device tile width and height in the rail.
-    pub const DEVICE_TILE_SIZE: f32 = 48.0;
+    pub const DEVICE_TILE_SIZE: f32 = 40.0;
+    /// Width of the selected-device marker inside each rail tile.
+    pub const RAIL_INDICATOR_WIDTH: f32 = 3.0;
+    /// Monogram tile size in the device directory.
+    pub const HOME_DEVICE_AVATAR_SIZE: f32 = 56.0;
     /// Minimum useful workspace width in logical pixels.
     pub const MIN_WORKSPACE_WIDTH: f32 = 360.0;
     /// Minimum window width in logical pixels.
@@ -48,42 +52,48 @@ pub mod tokens {
     pub const TITLE_SIZE: f32 = 22.0;
     /// Metric value size.
     pub const METRIC_SIZE: f32 = 20.0;
+    /// Maximum width for a centered empty-session card.
+    pub const EMPTY_STATE_MAX_WIDTH: f32 = 560.0;
     /// Small corner radius.
     pub const RADIUS_SMALL: f32 = 6.0;
     /// Standard corner radius.
     pub const RADIUS_MEDIUM: f32 = 8.0;
     /// Card corner radius.
     pub const RADIUS_LARGE: f32 = 10.0;
-    /// Dark rail background.
-    pub const RAIL: Color = Color::from_rgb(0.075, 0.082, 0.105);
-    /// Secondary sidebar background.
-    pub const SIDEBAR: Color = Color::from_rgb(0.105, 0.115, 0.145);
-    /// Main workspace background.
-    pub const MAIN: Color = Color::from_rgb(0.075, 0.085, 0.115);
-    /// Raised card background.
-    pub const CARD: Color = Color::from_rgb(0.14, 0.155, 0.19);
-    /// Slightly elevated surface for compact control groups.
-    pub const SURFACE: Color = Color::from_rgb(0.12, 0.13, 0.165);
+    /// Deep graphite background for the device rail.
+    pub const RAIL: Color = Color::from_rgb(0.055, 0.060, 0.080);
+    /// Secondary device and telemetry sidebar background.
+    pub const SIDEBAR: Color = Color::from_rgb(0.090, 0.098, 0.133);
+    /// Main workspace background, separated clearly from both sidebars.
+    pub const MAIN: Color = Color::from_rgb(0.067, 0.075, 0.105);
+    /// Raised card background for lists and event rows.
+    pub const CARD: Color = Color::from_rgb(0.141, 0.153, 0.200);
+    /// Elevated surface for grouped controls and compact panels.
+    pub const SURFACE: Color = Color::from_rgb(0.114, 0.125, 0.169);
+    /// Hover fill for interactive rows and buttons.
+    pub const HOVER: Color = Color::from_rgb(0.169, 0.184, 0.239);
     /// Near-black video canvas that frames letterboxed content.
-    pub const VIDEO_FRAME: Color = Color::from_rgb(0.045, 0.052, 0.070);
-    /// Subtle accent wash for status chips and focus areas.
-    pub const ACCENT_WASH: Color = Color::from_rgb(0.15, 0.14, 0.24);
-    /// Selected row background.
-    pub const SELECTED: Color = Color::from_rgb(0.22, 0.20, 0.36);
+    pub const VIDEO_FRAME: Color = Color::from_rgb(0.031, 0.039, 0.059);
+    /// Muted purple wash for badges and low-emphasis selected surfaces.
+    pub const ACCENT_WASH: Color = Color::from_rgb(0.141, 0.125, 0.224);
+    /// Selected row background, distinct from hover and raised cards.
+    pub const SELECTED: Color = Color::from_rgb(0.188, 0.169, 0.290);
     /// Primary text color.
-    pub const TEXT: Color = Color::from_rgb(0.94, 0.95, 0.98);
-    /// Secondary text color.
-    pub const MUTED: Color = Color::from_rgb(0.61, 0.64, 0.70);
-    /// Blue-purple accent.
-    pub const ACCENT: Color = Color::from_rgb(0.48, 0.40, 0.95);
-    /// Positive state color.
-    pub const ONLINE: Color = Color::from_rgb(0.31, 0.78, 0.57);
-    /// Error/disconnected state color.
-    pub const OFFLINE: Color = Color::from_rgb(0.83, 0.38, 0.42);
-    /// Destructive-action color.
-    pub const DANGER: Color = Color::from_rgb(0.86, 0.30, 0.36);
-    /// Subtle border color.
-    pub const BORDER: Color = Color::from_rgb(0.22, 0.24, 0.29);
+    pub const TEXT: Color = Color::from_rgb(0.957, 0.961, 0.988);
+    /// Secondary text color, tuned to stay readable on the dark surfaces.
+    pub const MUTED: Color = Color::from_rgb(0.690, 0.710, 0.770);
+    /// Bright blue-purple accent for labels, indicators and borders.
+    pub const ACCENT: Color = Color::from_rgb(0.698, 0.659, 0.990);
+    /// Dark blue-purple fill for active/pressed controls with light text.
+    pub const ACCENT_FILL: Color = Color::from_rgb(0.302, 0.267, 0.541);
+    /// Positive state color for online indicators.
+    pub const ONLINE: Color = Color::from_rgb(0.345, 0.839, 0.635);
+    /// Error/disconnected state color for readable status indicators.
+    pub const OFFLINE: Color = Color::from_rgb(0.953, 0.540, 0.565);
+    /// Dark destructive-action fill for light button labels.
+    pub const DANGER: Color = Color::from_rgb(0.608, 0.188, 0.251);
+    /// Low-emphasis border used to separate nested dark surfaces.
+    pub const BORDER: Color = Color::from_rgb(0.160, 0.176, 0.227);
 }
 
 /// Computed widths for the four main shell regions.
@@ -155,7 +165,7 @@ mod tests {
         assert_eq!(collapsed.telemetry, tokens::COLLAPSED_SIDEBAR_WIDTH);
         assert_eq!(collapsed.workspace, 532.0);
         let wide = region_widths(1600.0, false, false);
-        assert_eq!(wide.workspace, 1008.0);
+        assert_eq!(wide.workspace, 964.0);
     }
 
     #[test]
@@ -169,5 +179,42 @@ mod tests {
         assert!(video_rect(0, 0, 1920, 1080)
             .expect("empty container is valid")
             .is_none());
+    }
+
+    #[test]
+    fn dark_theme_text_and_active_fills_keep_strong_contrast() {
+        fn luminance(color: iced::Color) -> f64 {
+            fn linear(channel: f32) -> f64 {
+                let channel = f64::from(channel);
+                if channel <= 0.04045 {
+                    channel / 12.92
+                } else {
+                    ((channel + 0.055) / 1.055).powf(2.4)
+                }
+            }
+
+            0.2126 * linear(color.r) + 0.7152 * linear(color.g) + 0.0722 * linear(color.b)
+        }
+
+        fn contrast(foreground: iced::Color, background: iced::Color) -> f64 {
+            let (lighter, darker) = {
+                let first = luminance(foreground);
+                let second = luminance(background);
+                if first >= second {
+                    (first, second)
+                } else {
+                    (second, first)
+                }
+            };
+            (lighter + 0.05) / (darker + 0.05)
+        }
+
+        for surface in [tokens::MAIN, tokens::SIDEBAR, tokens::SURFACE, tokens::CARD] {
+            assert!(contrast(tokens::TEXT, surface) >= 7.0);
+            assert!(contrast(tokens::MUTED, surface) >= 7.0);
+            assert!(contrast(tokens::ACCENT, surface) >= 7.0);
+        }
+        assert!(contrast(tokens::TEXT, tokens::ACCENT_FILL) >= 4.5);
+        assert!(contrast(tokens::TEXT, tokens::DANGER) >= 4.5);
     }
 }

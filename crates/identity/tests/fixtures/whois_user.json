@@ -1,0 +1,10 @@
+{
+  "Machine": {
+    "ID": "node-b",
+    "Name": "host-b",
+    "Addresses": ["198.51.100.20"],
+    "Tags": []
+  },
+  "User": {"ID": 17, "Name": "owner-a"},
+  "Capabilities": []
+}

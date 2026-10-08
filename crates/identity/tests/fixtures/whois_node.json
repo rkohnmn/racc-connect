@@ -1,0 +1,20 @@
+{
+  "Node": {
+    "ID": 42,
+    "StableID": "stable-node-current",
+    "Name": "node-name-current",
+    "User": 7,
+    "Addresses": ["198.51.100.40/32", "2001:db8::40/128"],
+    "Online": true,
+    "Hostinfo": {
+      "OS": "windows",
+      "Hostname": "host-current",
+      "Tags": ["tag:host", "tag:viewer"]
+    }
+  },
+  "UserProfile": {
+    "ID": 7,
+    "LoginName": "owner-current"
+  },
+  "Capabilities": []
+}

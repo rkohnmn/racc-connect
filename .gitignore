@@ -1,4 +1,5 @@
 /target/
+/dist/
 .idea/
 .vscode/
 .fleet/
@@ -11,3 +12,6 @@ Desktop.ini
 *.user
 *.suo
 spikes/*/target/
+
+__pycache__/
+*.py[cod]

@@ -1,9 +1,11 @@
 //! Pure app state transitions and user-action command generation.
 
+use racc_core::ipc::{AllowlistEntry, HostStatus, IpcEvent, PendingPeer, MAX_PEER_LIST_ENTRIES};
 use racc_core::{
     ClipboardStatus, CoreEvent, CoreSnapshot, DeviceId, DeviceSnapshot, QualityPreset,
     SessionEndReason, UiCommand,
 };
+use std::time::Instant;
 
 /// Main shell view visible to the user.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
@@ -15,6 +17,21 @@ pub enum Page {
     Home,
     /// Local hosting and quality preferences.
     Settings,
+    /// Product and third-party notices.
+    About,
+}
+
+/// Current state of the Tailscale peer refresh shown on Home.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum DiscoveryState {
+    /// No refresh has been requested in this app session.
+    Idle,
+    /// A refresh request has been issued and peer metadata is still arriving.
+    Refreshing,
+    /// A successful refresh completed with this many current peers.
+    Updated { peer_count: usize },
+    /// The last refresh attempt failed with a safe, user-facing message.
+    Failed(String),
 }
 
 /// Session overlay state, rendered above the held or current frame.
@@ -49,6 +66,8 @@ pub enum UserAction {
     Home,
     /// Show settings.
     Settings,
+    /// Show product and third-party notices.
+    About,
     /// Rescan the fake core's known devices.
     DiscoverDevices,
     /// Change the quality used for future peer connections.
@@ -69,10 +88,14 @@ pub enum UserAction {
     SetKeyboardCapture(bool),
     /// Toggle mouse capture mode.
     SetMouseCapture(bool),
+    /// Toggle bidirectional text clipboard synchronization for the active session.
+    ToggleClipboardSync,
     /// Disconnect the current session.
     Disconnect,
     /// Turn host mode on or off.
     SetHosting(bool),
+    /// Start the app at sign-in or remove its current-user autostart entry.
+    SetAutostart(bool),
     /// Approve an incoming peer.
     ApprovePeer(DeviceId),
     /// Reject an incoming peer.
@@ -92,6 +115,8 @@ pub struct ViewModel {
     pub core: CoreSnapshot,
     /// Current page.
     pub page: Page,
+    /// Current Tailscale discovery state.
+    pub discovery_state: DiscoveryState,
     /// Preferred quality applied when starting a peer session.
     pub default_quality: QualityPreset,
     /// Most recently selected quality preference for the active session.
@@ -100,20 +125,40 @@ pub struct ViewModel {
     pub overlay: SessionOverlay,
     /// Whether keyboard capture is enabled locally.
     pub keyboard_capture: bool,
+    /// Whether the live keyboard reducer currently has focus and may forward input.
+    pub keyboard_capture_active: bool,
     /// Whether mouse capture is enabled locally.
     pub mouse_capture: bool,
+    /// Whether the live pointer reducer currently has focus and may forward input.
+    pub mouse_capture_active: bool,
     /// Whether the device sidebar is collapsed.
     pub device_sidebar_collapsed: bool,
     /// Whether the telemetry sidebar is collapsed.
     pub telemetry_sidebar_collapsed: bool,
+    /// Whether the app should start when the current user signs in.
+    pub autostart_enabled: bool,
     /// Clipboard status label displayed in the sidebar.
     pub clipboard_status: String,
+    /// Local monotonic time and direction of the latest completed clipboard transfer.
+    pub clipboard_last_sync: Option<(Instant, racc_core::ClipboardTransferDirection)>,
     /// Most recent user-facing notification.
     pub notification: Option<String>,
     /// Last good frame identifier, retained across a stream reset.
     pub held_frame_id: Option<u32>,
     /// Active stream dimensions (stream content, not monitor dimensions).
     pub stream_dimensions: Option<(u32, u32)>,
+    /// Whether this app instance has a live local host-agent worker.
+    pub local_host_controls_available: bool,
+    /// Whether the latest complete local IPC refresh succeeded.
+    pub local_host_connected: bool,
+    /// Actual status returned by the local host-agent.
+    pub local_host_status: Option<HostStatus>,
+    /// Approved local host-agent peers.
+    pub local_host_allowlist: Vec<AllowlistEntry>,
+    /// Local peers awaiting approval.
+    pub local_host_pending: Vec<PendingPeer>,
+    /// Safe, user-facing local host-agent error.
+    pub local_host_error: Option<String>,
 }
 
 impl ViewModel {
@@ -125,17 +170,79 @@ impl ViewModel {
         Self {
             core,
             page: Page::Session,
+            discovery_state: DiscoveryState::Idle,
             default_quality: QualityPreset::P720,
             session_quality: QualityPreset::P720,
             overlay: SessionOverlay::None,
             keyboard_capture: false,
+            keyboard_capture_active: false,
             mouse_capture: false,
+            mouse_capture_active: false,
             device_sidebar_collapsed: false,
             telemetry_sidebar_collapsed: false,
+            autostart_enabled: false,
             clipboard_status: "Ready".to_owned(),
+            clipboard_last_sync: None,
             notification: None,
             held_frame_id: None,
             stream_dimensions,
+            local_host_controls_available: false,
+            local_host_connected: false,
+            local_host_status: None,
+            local_host_allowlist: Vec::new(),
+            local_host_pending: Vec::new(),
+            local_host_error: None,
+        }
+    }
+
+    /// Marks the initial launch refresh as active.
+    pub fn begin_discovery(&mut self) {
+        self.discovery_state = DiscoveryState::Refreshing;
+    }
+
+    /// Records a user-facing discovery startup or refresh error.
+    pub fn set_discovery_error(&mut self, message: String) {
+        self.discovery_state = DiscoveryState::Failed(message);
+    }
+
+    /// Replaces host status and peer data with the latest local IPC snapshot.
+    pub fn apply_local_host_snapshot(&mut self, snapshot: crate::local_host::LocalHostSnapshot) {
+        self.local_host_connected = snapshot.connected;
+        self.local_host_status = snapshot.status;
+        self.local_host_allowlist = snapshot.allowlist;
+        if !snapshot.connected {
+            self.local_host_pending.clear();
+        }
+        self.local_host_error = snapshot.error;
+        self.core.hosting_enabled = self
+            .local_host_status
+            .as_ref()
+            .is_some_and(|status| status.hosting_enabled);
+    }
+
+    /// Replaces pending host approvals from a subscription's initial snapshot.
+    pub fn apply_local_host_pending_snapshot(&mut self, peers: Vec<PendingPeer>) {
+        self.local_host_pending = peers.into_iter().take(MAX_PEER_LIST_ENTRIES).collect();
+    }
+
+    /// Applies one pending-approval event from the local host-agent subscription.
+    pub fn apply_local_host_pending_event(&mut self, event: IpcEvent) {
+        match event {
+            IpcEvent::PendingAdded { peer } => {
+                if let Some(existing) = self
+                    .local_host_pending
+                    .iter_mut()
+                    .find(|existing| existing.node_id == peer.node_id)
+                {
+                    *existing = peer;
+                } else if self.local_host_pending.len() < MAX_PEER_LIST_ENTRIES {
+                    self.local_host_pending.push(peer);
+                }
+            }
+            IpcEvent::PendingRemoved { node_id } => {
+                self.local_host_pending
+                    .retain(|peer| peer.node_id != node_id);
+            }
         }
     }
 
@@ -145,7 +252,12 @@ impl ViewModel {
             UserAction::Session => self.page = Page::Session,
             UserAction::Home => self.page = Page::Home,
             UserAction::Settings => self.page = Page::Settings,
-            UserAction::DiscoverDevices => return vec![UiCommand::DiscoverDevices],
+            UserAction::About => self.page = Page::About,
+            UserAction::DiscoverDevices => {
+                self.discovery_state = DiscoveryState::Refreshing;
+                self.notification = None;
+                return vec![UiCommand::DiscoverDevices];
+            }
             UserAction::SetDefaultQuality(quality) => self.default_quality = quality,
             UserAction::SelectDevice(device_id) => {
                 if self.device_online(&device_id) {
@@ -223,15 +335,27 @@ impl ViewModel {
             }
             UserAction::SetKeyboardCapture(enabled) => {
                 self.keyboard_capture = enabled;
+                self.keyboard_capture_active = false;
                 return vec![UiCommand::ToggleKeyboardCapture(enabled)];
             }
             UserAction::SetMouseCapture(enabled) => {
                 self.mouse_capture = enabled;
+                self.mouse_capture_active = false;
                 return vec![UiCommand::ToggleMouseCapture(enabled)];
+            }
+            UserAction::ToggleClipboardSync => {
+                if !self.core.clipboard_session_active {
+                    return Vec::new();
+                }
+                let enabled = !self.core.clipboard_sync_enabled;
+                self.core.clipboard_sync_enabled = enabled;
+                return vec![UiCommand::SetClipboardEnabled(enabled)];
             }
             UserAction::Disconnect => {
                 self.keyboard_capture = false;
+                self.keyboard_capture_active = false;
                 self.mouse_capture = false;
+                self.mouse_capture_active = false;
                 self.overlay = SessionOverlay::Reconnecting;
                 return vec![UiCommand::Disconnect];
             }
@@ -239,6 +363,7 @@ impl ViewModel {
                 self.core.hosting_enabled = enabled;
                 return vec![UiCommand::SetHosting(enabled)];
             }
+            UserAction::SetAutostart(enabled) => self.autostart_enabled = enabled,
             UserAction::ApprovePeer(device_id) => return vec![UiCommand::ApprovePeer(device_id)],
             UserAction::RejectPeer(device_id) => return vec![UiCommand::RejectPeer(device_id)],
             UserAction::RemovePeer(device_id) => return vec![UiCommand::RemovePeer(device_id)],
@@ -370,6 +495,17 @@ impl ViewModel {
                 self.overlay = SessionOverlay::None;
                 self.held_frame_id = None;
             }
+            CoreEvent::DeviceDiscoveryCompleted {
+                peer_count,
+                local_device_name,
+            } => {
+                if let Some(local_device_name) = local_device_name {
+                    if !local_device_name.trim().is_empty() {
+                        self.core.local_device_name = local_device_name;
+                    }
+                }
+                self.discovery_state = DiscoveryState::Updated { peer_count };
+            }
             CoreEvent::ConnectionStatsUpdated(telemetry) => self.core.telemetry = telemetry,
             CoreEvent::InputCaptureChanged { keyboard, mouse } => {
                 self.keyboard_capture = keyboard;
@@ -392,7 +528,9 @@ impl ViewModel {
                     }
                 };
                 self.keyboard_capture = false;
+                self.keyboard_capture_active = false;
                 self.mouse_capture = false;
+                self.mouse_capture_active = false;
             }
             CoreEvent::PendingAuthorization {
                 device_id,
@@ -405,6 +543,9 @@ impl ViewModel {
             }
             CoreEvent::ClipboardStatus(status) => self.clipboard_status = clipboard_label(status),
             CoreEvent::Notification(notification) => {
+                if notification.title == "Device discovery failed" {
+                    self.discovery_state = DiscoveryState::Failed(notification.message.clone());
+                }
                 self.notification =
                     Some(format!("{}: {}", notification.title, notification.message))
             }
@@ -414,6 +555,249 @@ impl ViewModel {
                 }
                 self.overlay = SessionOverlay::Error("Video is unavailable".to_owned())
             }
+        }
+    }
+
+    /// Applies the latest live telemetry snapshot from the bounded runtime slot.
+    pub fn apply_live_telemetry(&mut self, telemetry: racc_telemetry::TelemetrySnapshot) {
+        let width = u32::from(telemetry.host.width);
+        let height = u32::from(telemetry.host.height);
+        if telemetry.session.epoch > 0 && width > 0 && height > 0 {
+            self.stream_dimensions = Some((width, height));
+        }
+        self.core.telemetry = telemetry;
+    }
+
+    /// Applies content-free clipboard transfer status from the separate runtime port.
+    pub fn apply_clipboard_metadata(&mut self, metadata: racc_core::ClipboardMetadata) {
+        use racc_core::{
+            ClipboardTransferDirection as Direction, ClipboardTransferStatus as Status,
+        };
+        let sequence = metadata
+            .sequence
+            .map_or_else(String::new, |sequence| format!(" #{sequence}"));
+        if matches!(metadata.status, Status::Sent | Status::AdapterApplied) {
+            self.clipboard_last_sync = Some((Instant::now(), metadata.direction));
+        }
+        self.clipboard_status = match (metadata.direction, metadata.status) {
+            (_, Status::Enabled) => "Text clipboard sync enabled".to_owned(),
+            (_, Status::Disabled) => "Sync disabled".to_owned(),
+            (_, Status::Sent) => format!("Sent text update{sequence}"),
+            (_, Status::ReceivedPendingApply) => {
+                format!("Received text update{sequence} · clipboard apply pending")
+            }
+            (_, Status::AdapterApplied) => {
+                format!("Applied received text update{sequence}")
+            }
+            (Direction::LocalToRemote, Status::AdapterFailed) => {
+                self.core.clipboard_sync_enabled = false;
+                self.notification = Some(
+                    "The local clipboard adapter failed; clipboard sync was disabled.".to_owned(),
+                );
+                "Clipboard sync disabled · local adapter error".to_owned()
+            }
+            (Direction::RemoteToLocal, Status::AdapterFailed) => {
+                self.notification = Some("Could not apply remote clipboard text.".to_owned());
+                "Remote clipboard apply failed".to_owned()
+            }
+            (_, Status::ApplyQueueFull) => {
+                "Latest remote text queued · an older pending apply was replaced".to_owned()
+            }
+            (_, Status::RejectedTooLarge) => {
+                self.notification = Some("Clipboard text exceeded the 512 KiB limit.".to_owned());
+                "Clipboard text rejected · over size limit".to_owned()
+            }
+            (_, Status::RejectedInvalidUtf8) => {
+                self.notification = Some("Clipboard update was not valid UTF-8.".to_owned());
+                "Clipboard update rejected · invalid text".to_owned()
+            }
+            (_, Status::Ignored) => "Duplicate or echo ignored".to_owned(),
+            (Direction::LocalToRemote, Status::Queued) => "Local text update queued".to_owned(),
+            (Direction::RemoteToLocal, Status::Queued) => "Remote text update queued".to_owned(),
+        };
+    }
+
+    /// Summarizes the last completed transfer using viewer-local monotonic time.
+    pub fn clipboard_last_sync_label(&self) -> String {
+        let Some((synced_at, direction)) = self.clipboard_last_sync else {
+            return "No clipboard sync yet".to_owned();
+        };
+        let elapsed = synced_at.elapsed().as_secs();
+        let age = if elapsed < 5 {
+            "just now".to_owned()
+        } else if elapsed < 60 {
+            format!("{elapsed}s ago")
+        } else if elapsed < 3_600 {
+            format!("{}m ago", elapsed / 60)
+        } else {
+            format!("{}h ago", elapsed / 3_600)
+        };
+        let direction = match direction {
+            racc_core::ClipboardTransferDirection::LocalToRemote => "this device to peer",
+            racc_core::ClipboardTransferDirection::RemoteToLocal => "peer to this device",
+        };
+        format!("{age} · {direction}")
+    }
+
+    /// Applies one live viewer runtime event to UI metadata state.
+    ///
+    /// Decoded frames stay on FrameSource; this mapper receives only bounded
+    /// lifecycle, topology, and statistics metadata.
+    pub fn apply_viewer_event(
+        &mut self,
+        device_id: &DeviceId,
+        event: racc_core::ViewerRuntimeEvent,
+    ) {
+        use racc_telemetry::{CodecKind, ConnectionState, HostSnapshot};
+        match event {
+            racc_core::ViewerRuntimeEvent::Connecting => {
+                self.overlay = SessionOverlay::Connecting;
+                self.core.telemetry.session.connection_state = ConnectionState::Connecting;
+                self.core.telemetry.session.decoder = racc_telemetry::DecoderKind::Unknown;
+            }
+            racc_core::ViewerRuntimeEvent::Connected(ack) => {
+                let displays = self
+                    .core
+                    .devices
+                    .iter()
+                    .find(|device| &device.id == device_id)
+                    .map(|device| device.displays.clone())
+                    .unwrap_or_default();
+                upsert_device(
+                    &mut self.core.devices,
+                    DeviceSnapshot {
+                        id: device_id.clone(),
+                        name: ack.device_name,
+                        os: ack.os,
+                        online: true,
+                        host_capable: true,
+                        displays,
+                        streamed_display: self.core.selected_display,
+                    },
+                );
+                self.core.selected_device = Some(device_id.clone());
+                self.core.telemetry.session.connection_state = ConnectionState::Connected;
+                self.core.telemetry.session.codec = CodecKind::H264;
+                self.core.clipboard_session_active = true;
+                self.overlay = SessionOverlay::Connecting;
+            }
+            racc_core::ViewerRuntimeEvent::TopologyChanged(topology) => {
+                let streamed = topology
+                    .streamed_display_id()
+                    .or_else(|| topology.primary_display_id());
+                self.apply_event(CoreEvent::TopologyChanged {
+                    device_id: device_id.clone(),
+                    topology,
+                });
+                if self.core.selected_device.as_ref() == Some(device_id) {
+                    if let Some(display_id) = streamed {
+                        self.core.selected_display = Some(display_id);
+                    }
+                }
+            }
+            racc_core::ViewerRuntimeEvent::StreamReset(reset) => {
+                if reset.status != racc_proto::StreamStatus::Ok {
+                    self.overlay = SessionOverlay::Error(format!(
+                        "Host could not start the stream: {:?}",
+                        reset.status
+                    ));
+                    return;
+                }
+                if self.core.selected_device.as_ref() != Some(device_id) {
+                    return;
+                }
+                if let Some(display_id) = racc_core::DisplayId::new(reset.display_id) {
+                    self.core.selected_display = Some(display_id);
+                }
+                self.core.telemetry.session.epoch = reset.epoch;
+                self.core.telemetry.session.codec = CodecKind::H264;
+                self.core.telemetry.host.width = reset.width;
+                self.core.telemetry.host.height = reset.height;
+                self.apply_event(CoreEvent::StreamReset {
+                    device_id: device_id.clone(),
+                    epoch: reset.epoch,
+                    width: reset.width,
+                    height: reset.height,
+                });
+            }
+            racc_core::ViewerRuntimeEvent::FrameAvailable { epoch, .. } => {
+                if self.core.selected_device.as_ref() == Some(device_id)
+                    && self.core.telemetry.session.epoch == epoch
+                {
+                    self.apply_event(CoreEvent::DecoderReady {
+                        device_id: device_id.clone(),
+                    });
+                }
+            }
+            racc_core::ViewerRuntimeEvent::DecoderSelected(decoder) => {
+                self.core.telemetry.session.decoder = decoder;
+            }
+            racc_core::ViewerRuntimeEvent::HostStats(report) => {
+                self.core.telemetry.host = HostSnapshot::from_stats_report(report);
+            }
+            racc_core::ViewerRuntimeEvent::Session(event) => match event {
+                racc_session::SessionEvent::Connected | racc_session::SessionEvent::Reconnected => {
+                    self.core.telemetry.session.connection_state = ConnectionState::Connected;
+                }
+                racc_session::SessionEvent::Reconnecting => {
+                    self.core.telemetry.session.connection_state = ConnectionState::Reconnecting;
+                    self.core.clipboard_session_active = false;
+                    self.core.clipboard_sync_enabled = false;
+                    self.overlay = SessionOverlay::Reconnecting;
+                }
+                racc_session::SessionEvent::DisplaySelected(display_id) => {
+                    if self.core.selected_device.as_ref() == Some(device_id) {
+                        self.core.selected_display = Some(display_id);
+                    }
+                }
+                racc_session::SessionEvent::DisplayUnavailable(display_id) => {
+                    self.overlay = SessionOverlay::Error(format!(
+                        "Display {} is unavailable",
+                        display_id.get()
+                    ));
+                }
+                racc_session::SessionEvent::SessionEnded
+                | racc_session::SessionEvent::ControlTimedOut => {
+                    self.core.telemetry.session.connection_state = ConnectionState::Disconnected;
+                    self.core.clipboard_session_active = false;
+                    self.core.clipboard_sync_enabled = false;
+                    self.overlay = SessionOverlay::Error(
+                        "The remote session ended; reconnect manually with --connect".to_owned(),
+                    );
+                }
+                other => self.notification = Some(format!("Remote session: {other:?}")),
+            },
+            racc_core::ViewerRuntimeEvent::Disconnected => {
+                self.core.telemetry.session.connection_state = ConnectionState::Disconnected;
+                self.core.clipboard_session_active = false;
+                self.core.clipboard_sync_enabled = false;
+                self.overlay = SessionOverlay::Error(
+                    "Connection closed; reconnect manually with --connect".to_owned(),
+                );
+                self.keyboard_capture = false;
+                self.keyboard_capture_active = false;
+                self.mouse_capture = false;
+                self.mouse_capture_active = false;
+            }
+            racc_core::ViewerRuntimeEvent::Failed(message) => {
+                self.core.telemetry.session.connection_state = ConnectionState::Disconnected;
+                self.core.clipboard_session_active = false;
+                self.core.clipboard_sync_enabled = false;
+                self.overlay = SessionOverlay::Error(message.clone());
+                self.notification = Some(message);
+                self.keyboard_capture = false;
+                self.keyboard_capture_active = false;
+                self.mouse_capture = false;
+                self.mouse_capture_active = false;
+            }
+            racc_core::ViewerRuntimeEvent::VisibilityChanged(visible) => {
+                self.core.visible = visible;
+                if !visible {
+                    self.overlay = SessionOverlay::Paused;
+                }
+            }
+            racc_core::ViewerRuntimeEvent::CursorPosition(_)
+            | racc_core::ViewerRuntimeEvent::CursorShape(_) => {}
         }
     }
 
@@ -468,6 +852,92 @@ mod tests {
     fn model() -> ViewModel {
         let fake = FakeCore::new(41);
         ViewModel::new(fake.snapshot().expect("fake snapshot"))
+    }
+
+    #[test]
+    fn local_host_status_replaces_saved_hosting_state() {
+        let mut state = model();
+        state.local_host_controls_available = true;
+        state.core.hosting_enabled = true;
+
+        state.apply_local_host_snapshot(crate::local_host::LocalHostSnapshot::default());
+        assert!(!state.core.hosting_enabled);
+        assert!(!state.local_host_connected);
+        assert!(state.local_host_status.is_none());
+
+        state.apply_local_host_snapshot(crate::local_host::LocalHostSnapshot {
+            connected: true,
+            status: Some(HostStatus {
+                hosting_enabled: false,
+                helper_state: racc_core::ipc::HelperState::Running,
+                connected_viewers: 1,
+                pending_approvals: 0,
+            }),
+            allowlist: Vec::new(),
+            error: None,
+        });
+        assert!(state.local_host_connected);
+        assert!(!state.core.hosting_enabled);
+        assert_eq!(
+            state
+                .local_host_status
+                .as_ref()
+                .map(|status| status.connected_viewers),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn local_host_pending_subscription_applies_snapshots_and_events() {
+        let mut state = model();
+        state.apply_local_host_pending_snapshot(vec![PendingPeer {
+            node_id: "peer-a".to_owned(),
+            display_name: "A".to_owned(),
+            login_name: String::new(),
+        }]);
+        state.apply_local_host_pending_event(IpcEvent::PendingAdded {
+            peer: PendingPeer {
+                node_id: "peer-b".to_owned(),
+                display_name: "B".to_owned(),
+                login_name: "owner@example.invalid".to_owned(),
+            },
+        });
+        state.apply_local_host_pending_event(IpcEvent::PendingAdded {
+            peer: PendingPeer {
+                node_id: "peer-a".to_owned(),
+                display_name: "A renamed".to_owned(),
+                login_name: String::new(),
+            },
+        });
+        assert_eq!(state.local_host_pending.len(), 2);
+        assert_eq!(state.local_host_pending[0].display_name, "A renamed");
+
+        state.apply_local_host_pending_event(IpcEvent::PendingRemoved {
+            node_id: "peer-b".to_owned(),
+        });
+        assert_eq!(state.local_host_pending.len(), 1);
+        assert_eq!(state.local_host_pending[0].node_id, "peer-a");
+    }
+
+    #[test]
+    fn autostart_action_updates_the_persistable_preference_without_core_commands() {
+        let mut state = model();
+        assert!(!state.autostart_enabled);
+        assert!(state
+            .reduce_action(UserAction::SetAutostart(true))
+            .is_empty());
+        assert!(state.autostart_enabled);
+        assert!(state
+            .reduce_action(UserAction::SetAutostart(false))
+            .is_empty());
+        assert!(!state.autostart_enabled);
+    }
+
+    #[test]
+    fn about_action_opens_the_notices_page_without_core_commands() {
+        let mut state = model();
+        assert!(state.reduce_action(UserAction::About).is_empty());
+        assert_eq!(state.page, Page::About);
     }
 
     #[test]
@@ -539,6 +1009,98 @@ mod tests {
             .id
             .clone();
         assert!(state.reduce_action(UserAction::Connect(offline)).is_empty());
+    }
+
+    #[test]
+    fn discovery_action_reports_refreshing_then_updated_for_online_and_offline_peers() {
+        let mut state = ViewModel::new(racc_core::CoreSnapshot::default());
+        state.begin_discovery();
+        assert_eq!(state.discovery_state, DiscoveryState::Refreshing);
+        assert_eq!(
+            state.reduce_action(UserAction::DiscoverDevices),
+            vec![UiCommand::DiscoverDevices]
+        );
+        assert_eq!(state.discovery_state, DiscoveryState::Refreshing);
+
+        let online_id = DeviceId::new("tailnet-node-online").expect("online device id");
+        state.apply_event(CoreEvent::DeviceDiscovered(DeviceSnapshot {
+            id: online_id.clone(),
+            name: "Windows host".to_owned(),
+            os: racc_proto::OsType::Windows,
+            online: true,
+            host_capable: true,
+            displays: Vec::new(),
+            streamed_display: None,
+        }));
+        assert_eq!(state.discovery_state, DiscoveryState::Refreshing);
+        state.apply_event(CoreEvent::DeviceDiscoveryCompleted {
+            peer_count: 1,
+            local_device_name: Some("local machine".to_owned()),
+        });
+        assert_eq!(
+            state.discovery_state,
+            DiscoveryState::Updated { peer_count: 1 }
+        );
+        assert_eq!(state.core.local_device_name, "local machine");
+        assert_eq!(state.core.devices.len(), 1);
+        assert_eq!(
+            state.reduce_action(UserAction::Connect(online_id.clone())),
+            vec![
+                UiCommand::Connect(online_id.clone()),
+                UiCommand::SetQuality {
+                    device_id: online_id,
+                    quality: QualityPreset::P720,
+                },
+            ]
+        );
+
+        let offline_id = DeviceId::new("tailnet-node-offline").expect("offline device id");
+        state.apply_event(CoreEvent::DeviceDiscovered(DeviceSnapshot {
+            id: offline_id.clone(),
+            name: "Offline Mac".to_owned(),
+            os: racc_proto::OsType::MacOs,
+            online: false,
+            host_capable: false,
+            displays: Vec::new(),
+            streamed_display: None,
+        }));
+        assert_eq!(state.core.devices.len(), 2);
+        assert!(state
+            .core
+            .devices
+            .iter()
+            .any(|device| device.id == offline_id && !device.online && !device.host_capable));
+        assert!(state
+            .reduce_action(UserAction::Connect(
+                DeviceId::new("tailnet-node-offline").unwrap()
+            ))
+            .is_empty());
+        state.reduce_action(UserAction::DiscoverDevices);
+        state.apply_event(CoreEvent::DeviceDiscoveryCompleted {
+            peer_count: 0,
+            local_device_name: None,
+        });
+        assert_eq!(
+            state.discovery_state,
+            DiscoveryState::Updated { peer_count: 0 }
+        );
+    }
+
+    #[test]
+    fn discovery_failure_is_visible_and_a_new_refresh_clears_the_error() {
+        let mut state = ViewModel::new(racc_core::CoreSnapshot::default());
+        state.apply_event(CoreEvent::Notification(racc_core::Notification {
+            level: racc_core::NotificationLevel::Warning,
+            title: "Device discovery failed".to_owned(),
+            message: "Tailscale is unavailable".to_owned(),
+        }));
+        assert_eq!(
+            state.discovery_state,
+            DiscoveryState::Failed("Tailscale is unavailable".to_owned())
+        );
+        state.reduce_action(UserAction::DiscoverDevices);
+        assert_eq!(state.discovery_state, DiscoveryState::Refreshing);
+        assert!(state.notification.is_none());
     }
 
     #[test]
@@ -736,6 +1298,125 @@ mod tests {
     }
 
     #[test]
+    fn live_telemetry_and_clipboard_metadata_update_only_bounded_ui_state() {
+        let mut state = model();
+        let mut hub = racc_telemetry::TelemetryHub::new();
+        hub.record_rtt(1, 25_001);
+        hub.record_loss(1, 0.02, 0.01);
+        let telemetry = hub.snapshot(1);
+        state.apply_live_telemetry(telemetry);
+        assert_eq!(state.core.telemetry.session.last_rtt_us, Some(25_001));
+        assert_eq!(state.core.telemetry.session.loss_fraction, 0.02);
+
+        state.apply_clipboard_metadata(racc_core::ClipboardMetadata {
+            direction: racc_core::ClipboardTransferDirection::RemoteToLocal,
+            sequence: Some(9),
+            byte_len: Some(7),
+            status: racc_core::ClipboardTransferStatus::ReceivedPendingApply,
+        });
+        assert_eq!(
+            state.clipboard_status,
+            "Received text update #9 · clipboard apply pending"
+        );
+        assert!(!state.clipboard_status.contains("secret"));
+
+        state.apply_clipboard_metadata(racc_core::ClipboardMetadata {
+            direction: racc_core::ClipboardTransferDirection::RemoteToLocal,
+            sequence: None,
+            byte_len: Some(524_289),
+            status: racc_core::ClipboardTransferStatus::RejectedTooLarge,
+        });
+        assert_eq!(
+            state.notification.as_deref(),
+            Some("Clipboard text exceeded the 512 KiB limit.")
+        );
+    }
+
+    #[test]
+    fn clipboard_last_sync_tracks_only_completed_transfers_and_direction() {
+        let mut state = model();
+        assert_eq!(state.clipboard_last_sync_label(), "No clipboard sync yet");
+
+        state.apply_clipboard_metadata(racc_core::ClipboardMetadata {
+            direction: racc_core::ClipboardTransferDirection::RemoteToLocal,
+            sequence: Some(7),
+            byte_len: Some(12),
+            status: racc_core::ClipboardTransferStatus::ReceivedPendingApply,
+        });
+        assert!(state.clipboard_last_sync.is_none());
+
+        state.apply_clipboard_metadata(racc_core::ClipboardMetadata {
+            direction: racc_core::ClipboardTransferDirection::LocalToRemote,
+            sequence: Some(8),
+            byte_len: Some(4),
+            status: racc_core::ClipboardTransferStatus::Sent,
+        });
+        assert_eq!(
+            state.clipboard_last_sync.map(|(_, direction)| direction),
+            Some(racc_core::ClipboardTransferDirection::LocalToRemote)
+        );
+        assert!(state
+            .clipboard_last_sync_label()
+            .contains("this device to peer"));
+
+        state.apply_clipboard_metadata(racc_core::ClipboardMetadata {
+            direction: racc_core::ClipboardTransferDirection::RemoteToLocal,
+            sequence: Some(9),
+            byte_len: Some(5),
+            status: racc_core::ClipboardTransferStatus::AdapterApplied,
+        });
+        assert_eq!(
+            state.clipboard_last_sync.map(|(_, direction)| direction),
+            Some(racc_core::ClipboardTransferDirection::RemoteToLocal)
+        );
+        assert!(state
+            .clipboard_last_sync_label()
+            .contains("peer to this device"));
+    }
+
+    #[test]
+    fn clipboard_adapter_error_metadata_is_content_free_and_disables_sync() {
+        let mut state = model();
+        state.core.clipboard_sync_enabled = true;
+        state.apply_clipboard_metadata(racc_core::ClipboardMetadata {
+            direction: racc_core::ClipboardTransferDirection::LocalToRemote,
+            sequence: None,
+            byte_len: None,
+            status: racc_core::ClipboardTransferStatus::AdapterFailed,
+        });
+        assert!(!state.core.clipboard_sync_enabled);
+        assert_eq!(
+            state.clipboard_status,
+            "Clipboard sync disabled · local adapter error"
+        );
+        assert_eq!(
+            state.notification.as_deref(),
+            Some("The local clipboard adapter failed; clipboard sync was disabled.")
+        );
+        assert!(!state.clipboard_status.contains("text payload"));
+    }
+
+    #[test]
+    fn clipboard_toggle_is_session_scoped_and_updates_the_command() {
+        let mut state = model();
+        assert!(state.core.clipboard_session_active);
+        assert_eq!(
+            state.reduce_action(UserAction::ToggleClipboardSync),
+            vec![UiCommand::SetClipboardEnabled(true)]
+        );
+        assert!(state.core.clipboard_sync_enabled);
+        assert_eq!(
+            state.reduce_action(UserAction::ToggleClipboardSync),
+            vec![UiCommand::SetClipboardEnabled(false)]
+        );
+
+        state.core.clipboard_session_active = false;
+        assert!(state
+            .reduce_action(UserAction::ToggleClipboardSync)
+            .is_empty());
+    }
+
+    #[test]
     fn stale_stream_events_from_another_device_do_not_replace_the_selected_session() {
         let mut state = model();
         let selected = state.core.selected_device.clone().expect("selected device");
@@ -801,5 +1482,141 @@ mod tests {
         });
         assert_eq!(state.core.selected_display, None);
         assert!(matches!(&state.overlay, SessionOverlay::Error(_)));
+    }
+    #[test]
+    fn viewer_connected_event_populates_the_explicit_peer() {
+        let mut state = ViewModel::new(racc_core::CoreSnapshot::default());
+        let device_id = DeviceId::new("tailnet-100.64.0.2").expect("device id");
+        state.apply_viewer_event(
+            &device_id,
+            racc_core::ViewerRuntimeEvent::Connected(racc_proto::HelloAck {
+                protocol_version: racc_proto::PROTOCOL_VERSION,
+                status: racc_proto::HelloStatus::Ok,
+                device_name: "remote workstation".to_owned(),
+                os: racc_proto::OsType::Windows,
+                app_version: "test".to_owned(),
+                codecs: 1,
+                max_height: 1080,
+                features: 0,
+                host_cpu_cores: 8,
+            }),
+        );
+        assert_eq!(state.core.selected_device, Some(device_id.clone()));
+        assert_eq!(state.core.devices.len(), 1);
+        assert_eq!(state.core.devices[0].name, "remote workstation");
+        assert!(state.core.devices[0].online);
+        assert!(state.core.devices[0].host_capable);
+        assert_eq!(
+            state.core.telemetry.session.connection_state,
+            racc_telemetry::ConnectionState::Connected
+        );
+    }
+
+    #[test]
+    fn viewer_stream_reset_and_frame_events_update_metadata_only() {
+        let mut state = ViewModel::new(racc_core::CoreSnapshot::default());
+        let device_id = DeviceId::new("tailnet-100.64.0.2").expect("device id");
+        state.core.selected_device = Some(device_id.clone());
+        state.overlay = SessionOverlay::Switching;
+        state.apply_viewer_event(
+            &device_id,
+            racc_core::ViewerRuntimeEvent::StreamReset(racc_proto::StreamReset {
+                req_id: 0,
+                epoch: 5,
+                codec: racc_proto::StreamCodec::H264,
+                width: 1280,
+                height: 720,
+                fps: 30,
+                topology_rev: 2,
+                display_id: 7,
+                status: racc_proto::StreamStatus::Ok,
+            }),
+        );
+        assert_eq!(state.stream_dimensions, Some((1280, 720)));
+        assert_eq!(state.core.telemetry.session.epoch, 5);
+        assert_eq!(state.core.selected_display, racc_core::DisplayId::new(7));
+        assert_eq!(state.overlay, SessionOverlay::Switching);
+
+        state.apply_viewer_event(
+            &device_id,
+            racc_core::ViewerRuntimeEvent::FrameAvailable {
+                epoch: 5,
+                frame_id: 41,
+            },
+        );
+        assert_eq!(state.overlay, SessionOverlay::None);
+        assert_eq!(state.core.telemetry.session.epoch, 5);
+    }
+
+    #[test]
+    fn viewer_decoder_selection_updates_local_decoder_telemetry() {
+        let mut state = ViewModel::new(racc_core::CoreSnapshot::default());
+        let device_id = DeviceId::new("tailnet-100.64.0.2").expect("device id");
+        state.apply_viewer_event(
+            &device_id,
+            racc_core::ViewerRuntimeEvent::DecoderSelected(
+                racc_telemetry::DecoderKind::MediaFoundationSynchronousMft,
+            ),
+        );
+        assert_eq!(
+            state.core.telemetry.session.decoder,
+            racc_telemetry::DecoderKind::MediaFoundationSynchronousMft
+        );
+
+        state.apply_viewer_event(
+            &device_id,
+            racc_core::ViewerRuntimeEvent::DecoderSelected(racc_telemetry::DecoderKind::Unknown),
+        );
+        assert_eq!(
+            state.core.telemetry.session.decoder,
+            racc_telemetry::DecoderKind::Unknown
+        );
+    }
+
+    #[test]
+    fn reconnecting_event_uses_the_automatic_retry_overlay() {
+        let mut state = ViewModel::new(racc_core::CoreSnapshot::default());
+        let device_id = DeviceId::new("tailnet-100.64.0.2").expect("device id");
+        state.core.clipboard_session_active = true;
+        state.core.clipboard_sync_enabled = true;
+        state.apply_viewer_event(
+            &device_id,
+            racc_core::ViewerRuntimeEvent::Session(racc_session::SessionEvent::Reconnecting),
+        );
+        assert!(!state.core.clipboard_session_active);
+        assert!(!state.core.clipboard_sync_enabled);
+        assert_eq!(state.overlay, SessionOverlay::Reconnecting);
+        assert_eq!(
+            state.core.telemetry.session.connection_state,
+            racc_telemetry::ConnectionState::Reconnecting
+        );
+    }
+
+    #[test]
+    fn viewer_host_statistics_event_updates_host_telemetry() {
+        let mut state = ViewModel::new(racc_core::CoreSnapshot::default());
+        let device_id = DeviceId::new("tailnet-100.64.0.2").expect("device id");
+        state.apply_viewer_event(
+            &device_id,
+            racc_core::ViewerRuntimeEvent::HostStats(racc_proto::StatsReport {
+                host_cpu_pct_x10: 237,
+                capture_backend: racc_proto::CaptureBackend::Dxgi,
+                encoder: racc_proto::Encoder::MediaFoundationHw,
+                width: 1920,
+                height: 1080,
+                display_refresh_mhz: 144_000,
+                target_bitrate_kbps: 7000,
+                actual_bitrate_kbps: 6800,
+            }),
+        );
+        assert_eq!(state.core.telemetry.host.cpu_pct_x10, 237);
+        assert_eq!(
+            (
+                state.core.telemetry.host.width,
+                state.core.telemetry.host.height
+            ),
+            (1920, 1080)
+        );
+        assert_eq!(state.core.telemetry.host.refresh_mhz, 144_000);
     }
 }

@@ -1,0 +1,172 @@
+//! macOS virtual-key-code mapping for USB HID keyboard-page usages.
+//!
+//! The mapping uses physical key positions and does not translate shortcut meaning between
+//! systems. These functions are platform-neutral so the table can be tested on Windows hosts.
+
+/// Maps a USB HID keyboard-page usage to a macOS virtual key code.
+///
+/// Unsupported keys return `None`; this table never guesses based on the active keyboard layout.
+pub fn hid_to_macos_keycode(usage: u16) -> Option<u16> {
+    KEY_MAP
+        .iter()
+        .find_map(|(hid, mac)| (*hid == usage).then_some(*mac))
+}
+
+/// Maps a macOS virtual key code back to its USB HID keyboard-page usage.
+///
+/// The virtual key code identifies a physical position; Unicode text composition and the active
+/// keyboard layout are intentionally outside this mapping.
+pub fn macos_keycode_to_hid(keycode: u16) -> Option<u16> {
+    KEY_MAP
+        .iter()
+        .find_map(|(hid, mac)| (*mac == keycode).then_some(*hid))
+}
+
+// Values are Apple's kVK_* constants from HIToolbox/Events.h. This table covers the common
+// keyboard and keypad keys, navigation, F1-F20, and left/right modifiers. The Mac has no native
+// positions corresponding to every USB international/media usage; those remain unsupported.
+const KEY_MAP: &[(u16, u16)] = &[
+    // Letters (HID A-Z; macOS positions are not alphabetically ordered).
+    (0x04, 0x00),
+    (0x05, 0x0B),
+    (0x06, 0x08),
+    (0x07, 0x02),
+    (0x08, 0x0E),
+    (0x09, 0x03),
+    (0x0A, 0x05),
+    (0x0B, 0x04),
+    (0x0C, 0x22),
+    (0x0D, 0x26),
+    (0x0E, 0x28),
+    (0x0F, 0x25),
+    (0x10, 0x2E),
+    (0x11, 0x2D),
+    (0x12, 0x1F),
+    (0x13, 0x23),
+    (0x14, 0x0C),
+    (0x15, 0x0F),
+    (0x16, 0x01),
+    (0x17, 0x11),
+    (0x18, 0x20),
+    (0x19, 0x09),
+    (0x1A, 0x0D),
+    (0x1B, 0x07),
+    (0x1C, 0x10),
+    (0x1D, 0x06),
+    // Number row and punctuation.
+    (0x1E, 0x12),
+    (0x1F, 0x13),
+    (0x20, 0x14),
+    (0x21, 0x15),
+    (0x22, 0x17),
+    (0x23, 0x16),
+    (0x24, 0x1A),
+    (0x25, 0x1C),
+    (0x26, 0x19),
+    (0x27, 0x1D),
+    (0x28, 0x24),
+    (0x29, 0x35),
+    (0x2A, 0x33),
+    (0x2B, 0x30),
+    (0x2C, 0x31),
+    (0x2D, 0x1B),
+    (0x2E, 0x18),
+    (0x2F, 0x21),
+    (0x30, 0x1E),
+    (0x31, 0x2A),
+    (0x32, 0x0A),
+    (0x33, 0x29),
+    (0x34, 0x27),
+    (0x35, 0x32),
+    (0x36, 0x2B),
+    (0x37, 0x2F),
+    (0x38, 0x2C),
+    (0x39, 0x39),
+    // Function row, navigation, and arrows.
+    (0x3A, 0x7A),
+    (0x3B, 0x78),
+    (0x3C, 0x63),
+    (0x3D, 0x76),
+    (0x3E, 0x60),
+    (0x3F, 0x61),
+    (0x40, 0x62),
+    (0x41, 0x64),
+    (0x42, 0x65),
+    (0x43, 0x6D),
+    (0x44, 0x67),
+    (0x45, 0x6F),
+    (0x49, 0x72),
+    (0x4A, 0x73),
+    (0x4B, 0x74),
+    (0x4C, 0x75),
+    (0x4D, 0x77),
+    (0x4E, 0x79),
+    (0x4F, 0x7C),
+    (0x50, 0x7B),
+    (0x51, 0x7D),
+    (0x52, 0x7E),
+    // Keypad.
+    (0x54, 0x4B),
+    (0x55, 0x43),
+    (0x56, 0x4E),
+    (0x57, 0x45),
+    (0x58, 0x4C),
+    (0x59, 0x53),
+    (0x5A, 0x54),
+    (0x5B, 0x55),
+    (0x5C, 0x56),
+    (0x5D, 0x57),
+    (0x5E, 0x58),
+    (0x5F, 0x59),
+    (0x60, 0x5B),
+    (0x61, 0x5C),
+    (0x62, 0x52),
+    (0x63, 0x41),
+    // Extended function keys represented by stable Apple virtual key codes.
+    (0x68, 0x69),
+    (0x69, 0x6B),
+    (0x6A, 0x71),
+    (0x6B, 0x6A),
+    (0x6C, 0x40),
+    (0x6D, 0x4F),
+    (0x6E, 0x50),
+    (0x6F, 0x5A),
+    // Left/right Control, Shift, Option, and Command (GUI) are physical positions.
+    (0xE0, 0x3B),
+    (0xE1, 0x38),
+    (0xE2, 0x3A),
+    (0xE3, 0x37),
+    (0xE4, 0x3E),
+    (0xE5, 0x3C),
+    (0xE6, 0x3D),
+    (0xE7, 0x36),
+];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn supported_table_round_trips_both_directions() {
+        for (hid, mac) in KEY_MAP {
+            assert_eq!(hid_to_macos_keycode(*hid), Some(*mac), "HID {hid:#x}");
+            assert_eq!(macos_keycode_to_hid(*mac), Some(*hid), "macOS {mac:#x}");
+        }
+    }
+
+    #[test]
+    fn maps_physical_alphanumeric_and_modifier_positions() {
+        assert_eq!(hid_to_macos_keycode(0x04), Some(0x00)); // A
+        assert_eq!(hid_to_macos_keycode(0x1D), Some(0x06)); // Z
+        assert_eq!(hid_to_macos_keycode(0xE0), Some(0x3B)); // Left Control
+        assert_eq!(hid_to_macos_keycode(0xE3), Some(0x37)); // Left Command
+        assert_eq!(hid_to_macos_keycode(0xE7), Some(0x36)); // Right Command
+        assert_eq!(macos_keycode_to_hid(0x37), Some(0xE3));
+    }
+
+    #[test]
+    fn rejects_unknown_and_layout_dependent_values() {
+        assert_eq!(hid_to_macos_keycode(0xFFFF), None);
+        assert_eq!(macos_keycode_to_hid(0xFFFF), None);
+    }
+}

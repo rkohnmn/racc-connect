@@ -1,0 +1,7 @@
+{
+  "Machines": [
+    {"ID": "node-a", "Name": "host-a"},
+    {"ID": "node-b", "Name": "host-b"}
+  ],
+  "Machine": {"ID": "node-a", "Name": "host-a"}
+}

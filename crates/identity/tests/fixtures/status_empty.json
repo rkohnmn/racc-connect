@@ -1,0 +1,5 @@
+{
+  "BackendState": "Running",
+  "Self": {"HostName": "host-a", "TailscaleIPs": []},
+  "Peer": {}
+}

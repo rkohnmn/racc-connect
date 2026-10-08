@@ -1,18 +1,34 @@
 use crate::{
-    SessionEvent, KEYFRAME_REQUEST_MIN_INTERVAL_US, MAX_STREAM_HEIGHT_PX, MAX_STREAM_WIDTH_PX,
-    STREAM_FPS,
+    SessionEvent, HEARTBEAT_INTERVAL_US, HEARTBEAT_TIMEOUT_US, KEYFRAME_REQUEST_MIN_INTERVAL_US,
+    MAX_STREAM_HEIGHT_PX, MAX_STREAM_WIDTH_PX, STREAM_FPS,
 };
 use racc_proto::{
-    ControlMessage, Goodbye, GoodbyeReason, Hello, HelloAck, HelloStatus, PauseVideo,
-    RequestKeyframe, ResumeVideo, StreamCodec, StreamReset, StreamStatus, SwitchMonitor,
-    TopologyAnnounce, MAX_DISPLAYS,
+    ControlMessage, Goodbye, GoodbyeReason, Hello, HelloAck, HelloStatus, InputEvent,
+    InputEventKind, PauseVideo, Ping, Pong, RequestKeyframe, ResumeVideo, StreamCodec, StreamReset,
+    StreamStatus, SwitchMonitor, TopologyAnnounce, MAX_DISPLAYS,
 };
+use racc_telemetry::{PingTracker, RttEstimator, RttSnapshot};
 use racc_topology::{is_revision_newer, DisplayId};
 
+/// Required viewer reconnect schedule in microseconds; the final delay repeats.
+pub const RECONNECT_BACKOFF_US: [u64; 5] = [500_000, 1_000_000, 2_000_000, 4_000_000, 5_000_000];
 /// Delay before the first viewer reconnect attempt.
-pub const INITIAL_RECONNECT_DELAY_US: u64 = 50_000;
+pub const INITIAL_RECONNECT_DELAY_US: u64 = crate::RECONNECT_BACKOFF_MS[0] * 1_000;
 /// Maximum delay between viewer reconnect attempts.
-pub const MAX_RECONNECT_DELAY_US: u64 = 1_000_000;
+pub const MAX_RECONNECT_DELAY_US: u64 = crate::RECONNECT_BACKOFF_MS[4] * 1_000;
+/// Time allowed for HelloAck and the initial topology handshake.
+pub const HANDSHAKE_TIMEOUT_US: u64 = crate::HANDSHAKE_TIMEOUT_MS * 1_000;
+
+/// Switch retries once after this timeout before falling back to the old display.
+pub const SWITCH_TIMEOUT_US: u64 = crate::SWITCH_TIMEOUT_MS * 1_000;
+/// First keyframe nudge delay after a successful StreamReset.
+pub const FIRST_KEYFRAME_NUDGE_US: u64 = crate::FIRST_KEYFRAME_NUDGE_MS * 1_000;
+/// Decoder reset and repeated keyframe request delay.
+pub const FIRST_KEYFRAME_RESET_US: u64 = crate::FIRST_KEYFRAME_RESET_MS * 1_000;
+/// Busy host response retry delay.
+pub const BUSY_RETRY_DELAY_MS: u64 = 5_000;
+/// Busy host response retry delay, in microseconds.
+pub const BUSY_RETRY_DELAY_US: u64 = BUSY_RETRY_DELAY_MS * 1_000;
 
 /// Viewer-side lifecycle state.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -68,6 +84,8 @@ pub enum ViewerAction {
     ReconnectTransport,
     /// Ask the transport layer to close the active control connection.
     DisconnectTransport,
+    /// Forward a keyboard, wheel, or currently mapped pointer event to the host.
+    ForwardInput(InputEvent),
 }
 
 /// Deterministic exponential reconnect schedule.
@@ -90,10 +108,8 @@ impl Backoff {
 
     /// Schedules the next retry and returns its delay in microseconds.
     pub fn schedule(&mut self, now_us: u64) -> u64 {
-        let shift = self.attempts.min(31);
-        let delay = INITIAL_RECONNECT_DELAY_US
-            .saturating_mul(1_u64 << shift)
-            .min(MAX_RECONNECT_DELAY_US);
+        let schedule_index = (self.attempts as usize).min(RECONNECT_BACKOFF_US.len() - 1);
+        let delay = RECONNECT_BACKOFF_US[schedule_index];
         self.attempts = self.attempts.saturating_add(1);
         self.retry_at_us = Some(now_us.saturating_add(delay));
         delay
@@ -140,6 +156,18 @@ pub struct ViewerSession {
     require_stream_reset: bool,
     video_paused: bool,
     last_keyframe_request_us: Option<u64>,
+    clock_now_us: u64,
+    handshake_deadline_us: Option<u64>,
+    busy_retry_at_us: Option<u64>,
+    last_control_activity_us: Option<u64>,
+    next_heartbeat_us: Option<u64>,
+    next_ping_nonce: u64,
+    switch_deadline_us: Option<u64>,
+    switch_retries: u8,
+    keyframe_nudge_at_us: Option<u64>,
+    keyframe_reset_at_us: Option<u64>,
+    ping_tracker: PingTracker,
+    rtt_estimator: RttEstimator,
 }
 
 impl ViewerSession {
@@ -163,6 +191,18 @@ impl ViewerSession {
             require_stream_reset: false,
             video_paused: false,
             last_keyframe_request_us: None,
+            clock_now_us: 0,
+            handshake_deadline_us: None,
+            busy_retry_at_us: None,
+            last_control_activity_us: None,
+            next_heartbeat_us: None,
+            next_ping_nonce: 1,
+            switch_deadline_us: None,
+            switch_retries: 0,
+            keyframe_nudge_at_us: None,
+            keyframe_reset_at_us: None,
+            ping_tracker: PingTracker::new(),
+            rtt_estimator: RttEstimator::default(),
         }
     }
 
@@ -196,11 +236,43 @@ impl ViewerSession {
         self.backoff
     }
 
+    /// Records a valid control message and refreshes heartbeat timing.
+    pub fn on_control_activity_at(&mut self, now_us: u64) {
+        self.clock_now_us = now_us;
+        self.last_control_activity_us = Some(now_us);
+        self.next_heartbeat_us = Some(now_us.saturating_add(HEARTBEAT_INTERVAL_US));
+    }
+
+    /// Matches a Pong, updates RTT estimation, and returns the measured RTT.
+    pub fn on_pong(&mut self, pong: Pong, now_us: u64) -> Option<u64> {
+        self.on_control_activity_at(now_us);
+        let rtt_us = self
+            .ping_tracker
+            .match_pong(pong.nonce, pong.echo_ts_us, now_us)?;
+        self.rtt_estimator.record(now_us, rtt_us);
+        Some(rtt_us)
+    }
+
+    /// Returns a bounded RTT snapshot at the supplied virtual timestamp.
+    pub fn rtt_snapshot(&mut self, now_us: u64) -> RttSnapshot {
+        self.rtt_estimator.snapshot(now_us)
+    }
+
     /// Starts a control handshake after the transport reports a connection.
     pub fn on_connect(&mut self) -> Vec<ViewerAction> {
+        self.on_connect_at(self.clock_now_us)
+    }
+
+    /// Starts a handshake and arms its deadline using injected virtual time.
+    pub fn on_connect_at(&mut self, now_us: u64) -> Vec<ViewerAction> {
         if self.phase == ViewerPhase::Closed {
             return Vec::new();
         }
+        self.clock_now_us = now_us;
+        self.last_control_activity_us = Some(now_us);
+        self.next_heartbeat_us = None;
+        self.handshake_deadline_us = Some(now_us.saturating_add(HANDSHAKE_TIMEOUT_US));
+        self.busy_retry_at_us = None;
         self.backoff.retry_at_us = None;
         self.phase = ViewerPhase::AwaitingHelloAck;
         vec![ViewerAction::SendControl(ControlMessage::Hello(
@@ -210,18 +282,32 @@ impl ViewerSession {
 
     /// Processes the host handshake response.
     pub fn on_hello_ack(&mut self, ack: HelloAck) -> Vec<ViewerAction> {
+        self.on_hello_ack_at(ack, self.clock_now_us)
+    }
+
+    /// Processes the handshake response and updates the injected control clock.
+    pub fn on_hello_ack_at(&mut self, ack: HelloAck, now_us: u64) -> Vec<ViewerAction> {
         if self.phase != ViewerPhase::AwaitingHelloAck {
             return Vec::new();
+        }
+        self.on_control_activity_at(now_us);
+        self.handshake_deadline_us = None;
+        if ack.status == HelloStatus::Busy {
+            self.phase = ViewerPhase::Reconnecting;
+            self.busy_retry_at_us = Some(now_us.saturating_add(BUSY_RETRY_DELAY_US));
+            self.backoff.retry_at_us = None;
+            return vec![ViewerAction::DisconnectTransport];
         }
         let accepted = ack.status == HelloStatus::Ok
             && ack.protocol_version == self.hello.protocol_version
             && ack.codecs & 1 != 0;
         if !accepted {
-            self.phase = ViewerPhase::Disconnected;
+            self.phase = ViewerPhase::Closed;
             return vec![ViewerAction::DisconnectTransport];
         }
         self.phase = ViewerPhase::AwaitingTopology;
         self.backoff.reset();
+        self.busy_retry_at_us = None;
         let event = if self.ever_connected {
             SessionEvent::Reconnected
         } else {
@@ -281,6 +367,10 @@ impl ViewerSession {
                 self.pending_switch_req = None;
                 self.switch_reset_received = false;
                 self.waiting_for_keyframe = false;
+                self.keyframe_nudge_at_us = None;
+                self.keyframe_reset_at_us = None;
+                self.switch_deadline_us = None;
+                self.switch_retries = 0;
                 self.phase = if self.video_paused {
                     ViewerPhase::Paused
                 } else if self.stream_epoch.is_some() && self.selected_display.is_some() {
@@ -305,7 +395,7 @@ impl ViewerSession {
 
     /// Requests a monitor switch while keeping the last good frame displayed.
     /// A newer switch supersedes an unfinished request.
-    pub fn switch_display(&mut self, display_id: u32, _now_us: u64) -> Vec<ViewerAction> {
+    pub fn switch_display(&mut self, display_id: u32, now_us: u64) -> Vec<ViewerAction> {
         if !matches!(
             self.phase,
             ViewerPhase::Streaming | ViewerPhase::Switching | ViewerPhase::AwaitingStream
@@ -330,6 +420,8 @@ impl ViewerSession {
         let req_id = self.allocate_req_id();
         self.pending_display = Some(display);
         self.pending_switch_req = Some(req_id);
+        self.switch_deadline_us = Some(now_us.saturating_add(SWITCH_TIMEOUT_US));
+        self.switch_retries = 0;
         self.switch_reset_received = false;
         self.waiting_for_keyframe = true;
         self.phase = ViewerPhase::Switching;
@@ -340,6 +432,12 @@ impl ViewerSession {
 
     /// Processes a host stream reset, ignoring stale epochs and stale switch results.
     pub fn on_stream_reset(&mut self, reset: StreamReset) -> Vec<ViewerAction> {
+        self.on_stream_reset_at(reset, self.clock_now_us)
+    }
+
+    /// Processes a stream reset at the supplied virtual time.
+    pub fn on_stream_reset_at(&mut self, reset: StreamReset, now_us: u64) -> Vec<ViewerAction> {
+        self.on_control_activity_at(now_us);
         if matches!(
             self.phase,
             ViewerPhase::Disconnected
@@ -377,6 +475,9 @@ impl ViewerSession {
                     return Vec::new();
                 }
                 self.stream_epoch = Some(reset.epoch);
+                self.keyframe_nudge_at_us = Some(now_us.saturating_add(FIRST_KEYFRAME_NUDGE_US));
+                self.keyframe_reset_at_us = Some(now_us.saturating_add(FIRST_KEYFRAME_RESET_US));
+                self.switch_deadline_us = None;
                 self.waiting_for_keyframe = true;
                 self.require_stream_reset = false;
                 self.switch_reset_received = self.pending_display.is_some();
@@ -393,6 +494,9 @@ impl ViewerSession {
             }
             if terminal_encoder_failure {
                 self.stream_epoch = Some(reset.epoch);
+                self.keyframe_nudge_at_us = Some(now_us.saturating_add(FIRST_KEYFRAME_NUDGE_US));
+                self.keyframe_reset_at_us = Some(now_us.saturating_add(FIRST_KEYFRAME_RESET_US));
+                self.switch_deadline_us = None;
                 self.require_stream_reset = true;
             }
             if reset.status == StreamStatus::DisplayNotFound {
@@ -406,6 +510,11 @@ impl ViewerSession {
                     }
                     if self.is_selected_display_invalidation(&reset) {
                         self.stream_epoch = Some(reset.epoch);
+                        self.keyframe_nudge_at_us =
+                            Some(now_us.saturating_add(FIRST_KEYFRAME_NUDGE_US));
+                        self.keyframe_reset_at_us =
+                            Some(now_us.saturating_add(FIRST_KEYFRAME_RESET_US));
+                        self.switch_deadline_us = None;
                         self.selected_display = None;
                         self.invalidated_display = None;
                         self.waiting_for_keyframe = true;
@@ -463,6 +572,9 @@ impl ViewerSession {
             return Vec::new();
         }
         self.stream_epoch = Some(reset.epoch);
+        self.keyframe_nudge_at_us = Some(now_us.saturating_add(FIRST_KEYFRAME_NUDGE_US));
+        self.keyframe_reset_at_us = Some(now_us.saturating_add(FIRST_KEYFRAME_RESET_US));
+        self.switch_deadline_us = None;
         self.invalidated_display = None;
         self.pending_display = Some(display);
         self.switch_reset_received = true;
@@ -486,6 +598,17 @@ impl ViewerSession {
         epoch: u16,
         is_keyframe: bool,
     ) -> (VideoDisposition, Vec<ViewerAction>) {
+        self.on_decoded_frame_at(epoch, is_keyframe, self.clock_now_us)
+    }
+
+    /// Handles a decoded frame with an explicit virtual timestamp.
+    pub fn on_decoded_frame_at(
+        &mut self,
+        epoch: u16,
+        is_keyframe: bool,
+        now_us: u64,
+    ) -> (VideoDisposition, Vec<ViewerAction>) {
+        self.clock_now_us = now_us;
         let Some(current_epoch) = self.stream_epoch else {
             return (VideoDisposition::Drop, Vec::new());
         };
@@ -522,6 +645,10 @@ impl ViewerSession {
             self.switch_reset_received = false;
             self.rendered_epoch = Some(epoch);
             self.waiting_for_keyframe = false;
+            self.keyframe_nudge_at_us = None;
+            self.keyframe_reset_at_us = None;
+            self.switch_deadline_us = None;
+            self.switch_retries = 0;
             self.phase = ViewerPhase::Streaming;
             let mut actions = Vec::new();
             if promoted.is_some() && promoted != previous_display {
@@ -555,6 +682,54 @@ impl ViewerSession {
         vec![ViewerAction::SendControl(ControlMessage::PauseVideo(
             PauseVideo,
         ))]
+    }
+
+    /// Forwards input that is valid for the active stream mapping.
+    ///
+    /// During a display switch, pointer movement and buttons are dropped while
+    /// keyboard and wheel input continue against the newest adopted epoch.
+    pub fn on_user_input(&self, event: InputEvent) -> Vec<ViewerAction> {
+        if self.video_paused
+            || !matches!(
+                self.phase,
+                ViewerPhase::Streaming | ViewerPhase::Switching | ViewerPhase::AwaitingKeyframe
+            )
+        {
+            return Vec::new();
+        }
+        let Some(epoch) = self.stream_epoch else {
+            return Vec::new();
+        };
+        let target_display = if self.switch_reset_received {
+            self.pending_display.or(self.selected_display)
+        } else {
+            self.selected_display.or(self.pending_display)
+        };
+        let Some(display) = target_display else {
+            return Vec::new();
+        };
+        let pointer_event = matches!(
+            event.event,
+            InputEventKind::MouseMoveAbs { .. }
+                | InputEventKind::MouseMoveRel { .. }
+                | InputEventKind::MouseButton { .. }
+        );
+        if pointer_event && self.phase != ViewerPhase::Streaming {
+            return Vec::new();
+        }
+        let display_matches = event.display_id == display.get()
+            || self
+                .selected_display
+                .is_some_and(|selected| event.display_id == selected.get());
+        let epoch_matches = event.epoch == epoch || self.rendered_epoch == Some(event.epoch);
+        if !display_matches || !epoch_matches {
+            return Vec::new();
+        }
+        vec![ViewerAction::ForwardInput(InputEvent {
+            epoch,
+            display_id: display.get(),
+            event: event.event,
+        })]
     }
 
     /// Resumes video and waits for a fresh host stream reset and keyframe.
@@ -625,12 +800,113 @@ impl ViewerSession {
         vec![ViewerAction::Event(SessionEvent::Reconnecting)]
     }
 
-    /// Emits a reconnect action when its scheduled deadline has elapsed.
+    /// Advances handshake, heartbeat, switch, keyframe, Busy, and reconnect timers.
     pub fn tick(&mut self, now_us: u64) -> Vec<ViewerAction> {
-        if self.phase == ViewerPhase::Reconnecting && self.backoff.take_due(now_us) {
-            return vec![ViewerAction::ReconnectTransport];
+        self.clock_now_us = now_us;
+        if self.phase == ViewerPhase::Closed {
+            return Vec::new();
         }
-        Vec::new()
+        if self.phase == ViewerPhase::Reconnecting {
+            if self
+                .busy_retry_at_us
+                .is_some_and(|deadline| now_us >= deadline)
+            {
+                self.busy_retry_at_us = None;
+                return vec![ViewerAction::ReconnectTransport];
+            }
+            if self.backoff.take_due(now_us) {
+                return vec![ViewerAction::ReconnectTransport];
+            }
+            return Vec::new();
+        }
+        let handshake_timed_out = matches!(
+            self.phase,
+            ViewerPhase::AwaitingHelloAck | ViewerPhase::AwaitingTopology
+        ) && self
+            .handshake_deadline_us
+            .is_some_and(|deadline| now_us >= deadline);
+        let heartbeat_timed_out = !matches!(
+            self.phase,
+            ViewerPhase::Disconnected | ViewerPhase::AwaitingHelloAck | ViewerPhase::Closed
+        ) && self
+            .last_control_activity_us
+            .is_some_and(|last| now_us.saturating_sub(last) >= HEARTBEAT_TIMEOUT_US);
+        if handshake_timed_out || heartbeat_timed_out {
+            let mut actions = self.on_disconnect(now_us);
+            actions.insert(0, ViewerAction::DisconnectTransport);
+            return actions;
+        }
+
+        let mut actions = Vec::new();
+        if self
+            .next_heartbeat_us
+            .is_some_and(|deadline| now_us >= deadline)
+            && !matches!(
+                self.phase,
+                ViewerPhase::Disconnected | ViewerPhase::AwaitingHelloAck | ViewerPhase::Closed
+            )
+        {
+            let nonce = self.next_ping_nonce.max(1);
+            self.next_ping_nonce = nonce.wrapping_add(1).max(1);
+            self.next_heartbeat_us = Some(now_us.saturating_add(HEARTBEAT_INTERVAL_US));
+            self.ping_tracker.record_ping(nonce, now_us, now_us);
+            actions.push(ViewerAction::SendControl(ControlMessage::Ping(Ping {
+                nonce,
+                sender_ts_us: now_us,
+            })));
+        }
+        if self.phase == ViewerPhase::Switching
+            && self
+                .switch_deadline_us
+                .is_some_and(|deadline| now_us >= deadline)
+        {
+            if self.switch_retries == 0 {
+                self.switch_retries = 1;
+                self.switch_deadline_us = Some(now_us.saturating_add(SWITCH_TIMEOUT_US));
+                if let (Some(req_id), Some(display_id)) =
+                    (self.pending_switch_req, self.pending_display)
+                {
+                    actions.push(ViewerAction::SendControl(ControlMessage::SwitchMonitor(
+                        SwitchMonitor {
+                            req_id,
+                            display_id: display_id.get(),
+                        },
+                    )));
+                }
+            } else {
+                self.pending_display = None;
+                self.pending_switch_req = None;
+                self.switch_reset_received = false;
+                self.switch_deadline_us = None;
+                self.switch_retries = 0;
+                self.waiting_for_keyframe = false;
+                self.phase = if self.selected_display.is_some() {
+                    ViewerPhase::Streaming
+                } else {
+                    ViewerPhase::AwaitingStream
+                };
+            }
+        }
+        if self.waiting_for_keyframe && !self.video_paused {
+            if self
+                .keyframe_nudge_at_us
+                .is_some_and(|deadline| now_us >= deadline)
+            {
+                self.keyframe_nudge_at_us = None;
+                actions.extend(self.request_keyframe_if_allowed(now_us));
+            }
+            if self
+                .keyframe_reset_at_us
+                .is_some_and(|deadline| now_us >= deadline)
+            {
+                if let Some(epoch) = self.stream_epoch {
+                    actions.push(ViewerAction::ResetDecoder { epoch });
+                    actions.extend(self.request_keyframe_if_allowed(now_us));
+                }
+                self.keyframe_reset_at_us = Some(now_us.saturating_add(FIRST_KEYFRAME_RESET_US));
+            }
+        }
+        actions
     }
 
     /// Closes the session and asks the caller to send Goodbye then close.
@@ -675,7 +951,7 @@ impl ViewerSession {
 
     fn reset_matches_request(&self, reset: &StreamReset) -> bool {
         match self.pending_switch_req {
-            Some(request_id) => reset.req_id == request_id,
+            Some(request_id) => reset.req_id == request_id || reset.req_id == 0,
             None => reset.req_id == 0,
         }
     }
@@ -778,6 +1054,7 @@ fn valid_topology(topology: &TopologyAnnounce) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
     use racc_proto::{DisplayInfo, OsType};
 
     fn hello() -> Hello {
@@ -870,6 +1147,298 @@ mod tests {
                 DisplayId::new(1).expect("test id is nonzero")
             ))]
         );
+    }
+
+    #[test]
+    fn switching_suppresses_pointer_but_keeps_keyboard_and_wheel_input_live() {
+        let mut session = connected_viewer();
+        start_stream(&mut session);
+        let switch = session.switch_display(2, 100);
+        let request_id = match switch.as_slice() {
+            [ViewerAction::SendControl(ControlMessage::SwitchMonitor(request))] => request.req_id,
+            other => panic!("unexpected switch action: {other:?}"),
+        };
+        let pointer = InputEvent {
+            epoch: 1,
+            display_id: 1,
+            event: InputEventKind::MouseMoveAbs { u: 32000, v: 32000 },
+        };
+        assert!(session.on_user_input(pointer).is_empty());
+        let key = InputEvent {
+            epoch: 1,
+            display_id: 1,
+            event: InputEventKind::Key {
+                hid_usage: 0x04,
+                pressed: true,
+                modifiers: 0,
+            },
+        };
+        assert_eq!(
+            session.on_user_input(key),
+            vec![ViewerAction::ForwardInput(key)]
+        );
+        let wheel = InputEvent {
+            epoch: 1,
+            display_id: 1,
+            event: InputEventKind::Wheel { dx: 0, dy: 120 },
+        };
+        assert_eq!(
+            session.on_user_input(wheel),
+            vec![ViewerAction::ForwardInput(wheel)]
+        );
+        assert_eq!(
+            session.on_stream_reset_at(reset(request_id, 2, 2), 200),
+            vec![ViewerAction::ResetDecoder { epoch: 2 }]
+        );
+        let mapped_key = match session.on_user_input(key).as_slice() {
+            [ViewerAction::ForwardInput(event)] => *event,
+            other => panic!("keyboard event not forwarded: {other:?}"),
+        };
+        assert_eq!((mapped_key.epoch, mapped_key.display_id), (2, 2));
+        assert!(session.on_user_input(pointer).is_empty());
+        assert_eq!(
+            session.on_decoded_frame(2, true).0,
+            VideoDisposition::Replace
+        );
+        let new_pointer = InputEvent {
+            epoch: 2,
+            display_id: 2,
+            event: pointer.event,
+        };
+        assert_eq!(
+            session.on_user_input(new_pointer),
+            vec![ViewerAction::ForwardInput(new_pointer)]
+        );
+    }
+
+    #[test]
+    fn host_initiated_reset_for_pending_display_is_accepted_during_switch() {
+        let mut session = connected_viewer();
+        start_stream(&mut session);
+        assert!(matches!(
+            session.switch_display(2, 100).as_slice(),
+            [ViewerAction::SendControl(ControlMessage::SwitchMonitor(_))]
+        ));
+        assert_eq!(
+            session.on_stream_reset_at(reset(0, 2, 2), 200),
+            vec![ViewerAction::ResetDecoder { epoch: 2 }]
+        );
+        assert_eq!(
+            session.pending_display(),
+            Some(DisplayId::new(2).expect("test display"))
+        );
+        assert_eq!(
+            session.on_decoded_frame(2, true).0,
+            VideoDisposition::Replace
+        );
+        assert_eq!(
+            session.selected_display(),
+            Some(DisplayId::new(2).expect("test display"))
+        );
+        assert_eq!(session.phase(), ViewerPhase::Streaming);
+    }
+
+    #[test]
+    fn stale_viewer_input_is_dropped() {
+        let mut session = connected_viewer();
+        start_stream(&mut session);
+        assert!(session
+            .on_user_input(InputEvent {
+                epoch: 0,
+                display_id: 1,
+                event: InputEventKind::Key {
+                    hid_usage: 0x04,
+                    pressed: true,
+                    modifiers: 0
+                },
+            })
+            .is_empty());
+        assert!(session
+            .on_user_input(InputEvent {
+                epoch: 1,
+                display_id: 2,
+                event: InputEventKind::MouseMoveRel { dx: 1, dy: 1 },
+            })
+            .is_empty());
+    }
+
+    #[test]
+    fn viewer_timer_constants_and_handshake_timeout_are_exact() {
+        assert_eq!(crate::HEARTBEAT_INTERVAL_MS, 1_000);
+        assert_eq!(crate::HEARTBEAT_TIMEOUT_MS, 5_000);
+        assert_eq!(crate::HANDSHAKE_TIMEOUT_MS, 5_000);
+        assert_eq!(BUSY_RETRY_DELAY_MS, 5_000);
+        assert_eq!(crate::SWITCH_TIMEOUT_MS, 2_000);
+        assert_eq!(crate::FIRST_KEYFRAME_NUDGE_MS, 1_000);
+        assert_eq!(crate::FIRST_KEYFRAME_RESET_MS, 5_000);
+        assert_eq!(
+            crate::RECONNECT_BACKOFF_MS,
+            [500, 1_000, 2_000, 4_000, 5_000]
+        );
+        assert_eq!(HEARTBEAT_INTERVAL_US, 1_000_000);
+        assert_eq!(HEARTBEAT_TIMEOUT_US, 5_000_000);
+        assert_eq!(HANDSHAKE_TIMEOUT_US, 5_000_000);
+        assert_eq!(BUSY_RETRY_DELAY_US, 5_000_000);
+        assert_eq!(SWITCH_TIMEOUT_US, 2_000_000);
+        assert_eq!(FIRST_KEYFRAME_NUDGE_US, 1_000_000);
+        assert_eq!(FIRST_KEYFRAME_RESET_US, 5_000_000);
+        assert_eq!(
+            RECONNECT_BACKOFF_US,
+            [500_000, 1_000_000, 2_000_000, 4_000_000, 5_000_000]
+        );
+
+        let mut session = ViewerSession::new(hello());
+        assert_eq!(session.on_connect_at(100).len(), 1);
+        assert!(session.tick(5_000_099).is_empty());
+        assert_eq!(
+            session.tick(5_000_100),
+            vec![
+                ViewerAction::DisconnectTransport,
+                ViewerAction::Event(SessionEvent::Reconnecting),
+            ]
+        );
+        assert_eq!(session.backoff().retry_at_us(), Some(5_500_100));
+    }
+
+    #[test]
+    fn heartbeat_rtt_first_keyframe_nudge_and_decoder_reset_use_virtual_time() {
+        let mut session = ViewerSession::new(hello());
+        session.on_connect_at(0);
+        session.on_hello_ack_at(ack(), 0);
+        let ping_actions = session.tick(HEARTBEAT_INTERVAL_US);
+        let ping = ping_actions
+            .iter()
+            .find_map(|action| match action {
+                ViewerAction::SendControl(ControlMessage::Ping(ping)) => Some(*ping),
+                _ => None,
+            })
+            .expect("heartbeat ping");
+        assert_eq!(
+            session.on_pong(
+                Pong {
+                    nonce: ping.nonce,
+                    echo_ts_us: ping.sender_ts_us,
+                },
+                HEARTBEAT_INTERVAL_US + 25_000
+            ),
+            Some(25_000)
+        );
+        assert_eq!(
+            session
+                .rtt_snapshot(HEARTBEAT_INTERVAL_US + 25_000)
+                .last_rtt_us,
+            Some(25_000)
+        );
+
+        let mut session = connected_viewer();
+        assert!(session
+            .on_stream_reset_at(reset(0, 1, 1), 100)
+            .contains(&ViewerAction::ResetDecoder { epoch: 1 }));
+        session.on_control_activity_at(4_000_000);
+        let nudge = session.tick(1_000_100);
+        assert!(nudge.iter().any(|action| matches!(
+            action,
+            ViewerAction::SendControl(ControlMessage::RequestKeyframe(RequestKeyframe {
+                epoch: 1
+            }))
+        )));
+        let reset = session.tick(5_000_100);
+        assert!(reset.contains(&ViewerAction::ResetDecoder { epoch: 1 }));
+        assert!(reset.iter().any(|action| matches!(
+            action,
+            ViewerAction::SendControl(ControlMessage::RequestKeyframe(RequestKeyframe {
+                epoch: 1
+            }))
+        )));
+    }
+
+    #[test]
+    fn switch_retries_once_then_restores_previous_display_and_busy_waits_five_seconds() {
+        let mut session = connected_viewer();
+        start_stream(&mut session);
+        let request = session.switch_display(2, 100);
+        let req = match request.as_slice() {
+            [ViewerAction::SendControl(ControlMessage::SwitchMonitor(req))] => *req,
+            other => panic!("unexpected request: {other:?}"),
+        };
+        let retry = session.tick(2_000_100);
+        assert!(
+            retry.contains(&ViewerAction::SendControl(ControlMessage::SwitchMonitor(
+                req
+            )))
+        );
+        assert_eq!(
+            session
+                .tick(4_000_100)
+                .iter()
+                .filter(|action| matches!(
+                    action,
+                    ViewerAction::SendControl(ControlMessage::SwitchMonitor(_))
+                ))
+                .count(),
+            0
+        );
+        assert_eq!(session.phase(), ViewerPhase::Streaming);
+        assert_eq!(session.selected_display(), DisplayId::new(1));
+
+        let mut busy = ViewerSession::new(hello());
+        busy.on_connect_at(100);
+        let mut busy_ack = ack();
+        busy_ack.status = HelloStatus::Busy;
+        assert_eq!(
+            busy.on_hello_ack_at(busy_ack, 100),
+            vec![ViewerAction::DisconnectTransport]
+        );
+        assert!(busy.tick(5_000_099).is_empty());
+        assert_eq!(busy.tick(5_000_100), vec![ViewerAction::ReconnectTransport]);
+    }
+
+    proptest! {
+        #[test]
+        fn arbitrary_viewer_event_sequences_preserve_epoch_and_keyframe_promotion(
+            ops in prop::collection::vec(any::<u8>(), 1..192),
+        ) {
+            let mut session = connected_viewer();
+            start_stream(&mut session);
+            for (index, op) in ops.into_iter().enumerate() {
+                let now_us = (index as u64).saturating_mul(250_000);
+                let before = session.epoch();
+                let mut replaced = None;
+                let actions = match op % 11 {
+                    0 => session.switch_display(1 + u32::from(op & 1), now_us),
+                    1 => session.on_packet_loss(now_us),
+                    2 => session.on_decoder_error(now_us),
+                    3 => session.tick(now_us),
+                    4 => {
+                        let epoch = before.unwrap_or(1);
+                        let (disposition, actions) = session.on_decoded_frame_at(epoch, op & 0x80 != 0, now_us);
+                        replaced = Some((disposition, epoch, op & 0x80 != 0));
+                        actions
+                    }
+                    5 => session.on_pause(),
+                    6 => session.on_resume(),
+                    7 => session.on_disconnect(now_us),
+                    8 => session.on_connect_at(now_us),
+                    9 => session.on_hello_ack_at(ack(), now_us),
+                    _ => {
+                        let epoch = before.map_or(1, |value| value.wrapping_add(1));
+                        session.on_stream_reset_at(reset(0, epoch, 1), now_us)
+                    }
+                };
+                prop_assert!(actions.len() <= 8);
+                if op % 11 == 3 {
+                    prop_assert!(actions.len() <= 8);
+                }
+                if let Some((VideoDisposition::Replace, frame_epoch, is_keyframe)) = replaced {
+                    prop_assert!(is_keyframe);
+                    prop_assert_eq!(Some(frame_epoch), session.epoch());
+                }
+                if let (Some(old), Some(new)) = (before, session.epoch()) {
+                    let distance = new.wrapping_sub(old);
+                    prop_assert!(distance == 0 || distance < (1 << 15));
+                }
+            }
+        }
     }
 
     #[test]
@@ -1149,9 +1718,12 @@ mod tests {
             vec![ViewerAction::Event(SessionEvent::Reconnecting)]
         );
         assert_eq!(session.phase(), ViewerPhase::Reconnecting);
-        assert!(session.tick(50_999).is_empty());
-        assert_eq!(session.tick(51_000), vec![ViewerAction::ReconnectTransport]);
-        assert!(session.tick(51_001).is_empty());
+        assert!(session.tick(500_999).is_empty());
+        assert_eq!(
+            session.tick(501_000),
+            vec![ViewerAction::ReconnectTransport]
+        );
+        assert!(session.tick(501_001).is_empty());
         assert_eq!(session.backoff().attempts(), 1);
         assert_eq!(session.backoff().retry_at_us(), None);
         assert_eq!(session.on_connect().len(), 1);
@@ -1188,7 +1760,10 @@ mod tests {
         );
         assert!(session.video_paused);
 
-        assert_eq!(session.tick(51_000), vec![ViewerAction::ReconnectTransport]);
+        assert_eq!(
+            session.tick(501_000),
+            vec![ViewerAction::ReconnectTransport]
+        );
         assert_eq!(session.on_connect().len(), 1);
         assert_eq!(
             session.on_hello_ack(ack()),
@@ -1226,15 +1801,18 @@ mod tests {
             session.on_disconnect(1_000),
             vec![ViewerAction::Event(SessionEvent::Reconnecting)]
         );
-        assert_eq!(session.tick(51_000), vec![ViewerAction::ReconnectTransport]);
+        assert_eq!(
+            session.tick(501_000),
+            vec![ViewerAction::ReconnectTransport]
+        );
 
         // A failed transport attempt reports disconnect while the session is still
         // in Reconnecting and the previous deadline has already been consumed.
-        assert!(session.on_disconnect(51_000).is_empty());
-        assert_eq!(session.backoff().retry_at_us(), Some(151_000));
-        assert!(session.tick(150_999).is_empty());
+        assert!(session.on_disconnect(501_000).is_empty());
+        assert_eq!(session.backoff().retry_at_us(), Some(1_501_000));
+        assert!(session.tick(1_500_999).is_empty());
         assert_eq!(
-            session.tick(151_000),
+            session.tick(1_501_000),
             vec![ViewerAction::ReconnectTransport]
         );
     }
@@ -1315,16 +1893,16 @@ mod tests {
     }
 
     #[test]
-    fn reconnect_schedule_caps_at_one_second() {
+    fn reconnect_schedule_repeats_five_second_cap() {
         let mut backoff = Backoff::default();
         let expected = [
-            50_000, 100_000, 200_000, 400_000, 800_000, 1_000_000, 1_000_000,
+            500_000, 1_000_000, 2_000_000, 4_000_000, 5_000_000, 5_000_000, 5_000_000,
         ];
         for delay in expected {
             assert_eq!(backoff.schedule(0), delay);
         }
         assert_eq!(backoff.attempts(), 7);
-        assert_eq!(backoff.retry_at_us(), Some(1_000_000));
+        assert_eq!(backoff.retry_at_us(), Some(5_000_000));
     }
 
     #[test]

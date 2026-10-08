@@ -119,6 +119,8 @@ impl FakeCore {
                 local_device_name: "WIN10-GAMING-PC".to_owned(),
                 hosting_enabled: true,
                 visible: true,
+                clipboard_session_active: true,
+                clipboard_sync_enabled: false,
                 telemetry: TelemetrySnapshot::default(),
             },
             events: VecDeque::new(),
@@ -585,6 +587,8 @@ impl FakeCore {
             width: dimensions.0,
             height: dimensions.1,
             fps: 30,
+            capture_ts_us: None,
+            decode_duration_us: None,
             payload: FramePayload::SyntheticPattern {
                 seed: mix64(self.seed ^ u64::from(display_id.map_or(0, DisplayId::get))),
                 frame_number,
@@ -632,6 +636,10 @@ impl FakeCore {
         let actual_kbps = target_kbps.saturating_sub((jitter as u32).saturating_mul(9));
         let cpu = 180 + (mix64(self.seed ^ (frame_number / 5)) % 370) as u16;
         let connected = self.connected;
+        self.snapshot.clipboard_session_active = connected;
+        if !connected {
+            self.snapshot.clipboard_sync_enabled = false;
+        }
         self.snapshot.telemetry = TelemetrySnapshot {
             session: SessionSnapshot {
                 connection_state: if connected {
@@ -856,7 +864,11 @@ impl CoreHandle for FakeCore {
                     mouse: self.mouse_capture,
                 });
             }
+            UiCommand::SetClipboardEnabled(enabled) => {
+                self.snapshot.clipboard_sync_enabled = self.connected && enabled;
+            }
             UiCommand::Disconnect => {
+                self.snapshot.clipboard_sync_enabled = false;
                 if self.connected {
                     self.connected = false;
                     self.events.push_back(CoreEvent::SessionEnded {
@@ -1428,6 +1440,25 @@ mod tests {
             .into_iter()
             .find(|device| device.id == request);
         assert!(mac.is_some_and(|device| device.host_capable));
+    }
+
+    #[test]
+    fn clipboard_toggle_requires_active_session_and_clears_on_disconnect() {
+        let mut fake = FakeCore::new(83);
+        assert!(fake.snapshot().expect("snapshot").clipboard_session_active);
+
+        fake.send(UiCommand::SetClipboardEnabled(true))
+            .expect("enable clipboard");
+        assert!(fake.snapshot().expect("snapshot").clipboard_sync_enabled);
+
+        fake.send(UiCommand::Disconnect).expect("disconnect");
+        let disconnected = fake.snapshot().expect("snapshot");
+        assert!(!disconnected.clipboard_session_active);
+        assert!(!disconnected.clipboard_sync_enabled);
+
+        fake.send(UiCommand::SetClipboardEnabled(true))
+            .expect("attempt to enable while disconnected");
+        assert!(!fake.snapshot().expect("snapshot").clipboard_sync_enabled);
     }
 
     #[test]

@@ -1,13 +1,16 @@
 use racc_proto::{
     decode_control_frame, encode_cursor_datagram, encode_video_datagram, parse_cursor_datagram,
-    parse_video_datagram, CaptureBackend, ClipboardOrigin, ClipboardUpdate, ControlMessage,
-    ControlPayload, CursorShape, CursorUpdate, DisplayInfo, Encoder, Goodbye, GoodbyeReason, Hello,
-    HelloAck, HelloStatus, InputEvent, InputEventKind, OsType, PauseVideo, Ping, Pong,
-    RequestKeyframe, ResumeVideo, SetQuality, StatsReport, StreamCodec, StreamReset, StreamStatus,
-    SwitchMonitor, TopologyAnnounce, VideoDatagram, VideoHeader, MAX_CLIPBOARD_BYTES,
-    MAX_CONTROL_FRAME_BYTES, MAX_CURSOR_BYTES, MAX_CURSOR_DIM, MAX_DATAGRAM, MAX_DISPLAYS,
-    MAX_FRAGMENTS_PER_FRAME, MAX_NAME_BYTES, MAX_VIDEO_PAYLOAD, PROTOCOL_VERSION,
-    VIDEO_FLAG_CONFIG, VIDEO_FLAG_KEY, VIDEO_FLAG_LAST_FRAGMENT, VIDEO_HEADER_LEN,
+    parse_video_datagram, CaptureBackend, ClipboardOrigin, ClipboardSyncControl, ClipboardUpdate,
+    ControlMessage, ControlPayload, CursorShape, CursorUpdate, DisplayInfo, Encoder, Goodbye,
+    GoodbyeReason, Hello, HelloAck, HelloStatus, InputEvent, InputEventKind, LogicalClock, OsType,
+    PauseVideo, Ping, Pong, QualityAdjustment, QualityAdjustmentReason, RequestKeyframe,
+    ResumeVideo, SetQuality, StatsReport, StreamCodec, StreamReset, StreamStatus, SwitchMonitor,
+    TopologyAnnounce, VideoDatagram, VideoHeader, ViewerReport, CLIPBOARD_LOGICAL_CLOCK_VERSION,
+    MAX_CLIPBOARD_BYTES, MAX_CLIPBOARD_LOGICAL_CLOCK, MAX_CONTROL_FRAME_BYTES, MAX_CURSOR_BYTES,
+    MAX_CURSOR_DIM, MAX_DATAGRAM, MAX_DISPLAYS, MAX_FRAGMENTS_PER_FRAME, MAX_NAME_BYTES,
+    MAX_VIDEO_PAYLOAD, MAX_VIEWER_REPORT_DROPPED_FRAMES, MAX_VIEWER_REPORT_DURATION_MS,
+    PROTOCOL_VERSION, VIDEO_FLAG_CONFIG, VIDEO_FLAG_KEY, VIDEO_FLAG_LAST_FRAGMENT,
+    VIDEO_HEADER_LEN,
 };
 use std::fmt::Debug;
 
@@ -21,7 +24,7 @@ fn hex(value: &str) -> Vec<u8> {
 fn samples() -> Vec<ControlMessage> {
     vec![
         ControlMessage::Hello(Hello {
-            protocol_version: 0,
+            protocol_version: PROTOCOL_VERSION,
             device_name: "VIEW".into(),
             os: OsType::Windows,
             app_version: "1.2".into(),
@@ -31,7 +34,7 @@ fn samples() -> Vec<ControlMessage> {
             features: 1,
         }),
         ControlMessage::HelloAck(HelloAck {
-            protocol_version: 0,
+            protocol_version: PROTOCOL_VERSION,
             status: HelloStatus::Ok,
             device_name: "HOST".into(),
             os: OsType::MacOs,
@@ -102,6 +105,7 @@ fn samples() -> Vec<ControlMessage> {
         ControlMessage::ClipboardUpdate(ClipboardUpdate {
             seq: 7,
             origin: ClipboardOrigin::Viewer,
+            logical_clock: LogicalClock::new(9).expect("clock within bound"),
             text: "hi".into(),
         }),
         ControlMessage::StatsReport(StatsReport {
@@ -128,10 +132,20 @@ fn samples() -> Vec<ControlMessage> {
             height: 1,
             hotspot_x: 1,
             hotspot_y: 0,
+            blend_mode: racc_proto::CursorBlendMode::PremultipliedAlpha,
             bgra: vec![0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88],
         }),
         ControlMessage::Goodbye(Goodbye {
             reason: GoodbyeReason::Normal,
+        }),
+        ControlMessage::ClipboardSyncControl(ClipboardSyncControl { enabled: true }),
+        ControlMessage::QualityAdjustment(QualityAdjustment {
+            epoch: 0x1234,
+            reason: QualityAdjustmentReason::QueueOverflow,
+            from_height: 720,
+            to_height: 480,
+            from_bitrate_bps: 3_500_000,
+            to_bitrate_bps: 1_500_000,
         }),
     ]
 }
@@ -150,18 +164,25 @@ fn assert_payload_round_trip<T: ControlPayload + PartialEq + Debug>(expected: &T
 }
 
 #[test]
-fn constants_match_v0_wire_limits() {
-    assert_eq!(PROTOCOL_VERSION, 0);
+fn constants_match_v4_wire_limits() {
+    assert_eq!(PROTOCOL_VERSION, 4);
     assert_eq!(MAX_DATAGRAM, 1200);
     assert_eq!(VIDEO_HEADER_LEN, 18);
     assert_eq!(MAX_VIDEO_PAYLOAD, 1182);
     assert_eq!(MAX_FRAGMENTS_PER_FRAME, 1024);
     assert_eq!(MAX_CONTROL_FRAME_BYTES, 1_048_576);
     assert_eq!(MAX_CLIPBOARD_BYTES, 524_288);
+    assert_eq!(CLIPBOARD_LOGICAL_CLOCK_VERSION, 1);
+    assert_eq!(MAX_CLIPBOARD_LOGICAL_CLOCK, i64::MAX as u64);
+    assert_eq!(MAX_VIEWER_REPORT_DURATION_MS, 60_000);
+    assert_eq!(MAX_VIEWER_REPORT_DROPPED_FRAMES, 1_000_000);
     assert_eq!(MAX_DISPLAYS, 16);
     assert_eq!(MAX_NAME_BYTES, 128);
     assert_eq!(MAX_CURSOR_DIM, 128);
     assert_eq!(MAX_CURSOR_BYTES, 65_536);
+    assert_eq!(racc_proto::CursorBlendMode::PremultipliedAlpha as u8, 0);
+    assert_eq!(racc_proto::CursorBlendMode::WindowsMaskedColor as u8, 1);
+    assert_eq!(racc_proto::CursorBlendMode::WindowsAndXor as u8, 2);
 }
 
 #[test]
@@ -169,7 +190,7 @@ fn video_header_golden_vectors_round_trip() {
     let cases = [
         (
             VideoHeader {
-                version: 0,
+                version: PROTOCOL_VERSION,
                 flags: VIDEO_FLAG_KEY | VIDEO_FLAG_LAST_FRAGMENT | VIDEO_FLAG_CONFIG,
                 epoch: 0x1234,
                 frame_id: 0x0102_0304,
@@ -178,11 +199,11 @@ fn video_header_golden_vectors_round_trip() {
                 capture_ts_us: 0x0a0b_0c0d,
             },
             vec![0x00, 0x00, 0x00, 0x01, 0x65],
-            "00 01 07 00 34 12 04 03 02 01 02 00 03 00 0d 0c 0b 0a 00 00 00 01 65",
+            "04 01 07 00 34 12 04 03 02 01 02 00 03 00 0d 0c 0b 0a 00 00 00 01 65",
         ),
         (
             VideoHeader {
-                version: 0,
+                version: PROTOCOL_VERSION,
                 flags: VIDEO_FLAG_KEY | VIDEO_FLAG_CONFIG,
                 epoch: 0x1234,
                 frame_id: 0x0102_0304,
@@ -191,7 +212,7 @@ fn video_header_golden_vectors_round_trip() {
                 capture_ts_us: 0x0a0b_0c0d,
             },
             vec![0x00, 0x00, 0x01, 0x41],
-            "00 01 05 00 34 12 04 03 02 01 01 00 03 00 0d 0c 0b 0a 00 00 01 41",
+            "04 01 05 00 34 12 04 03 02 01 01 00 03 00 0d 0c 0b 0a 00 00 01 41",
         ),
     ];
     for (header, payload, expected_hex) in cases {
@@ -221,7 +242,7 @@ fn cursor_datagram_golden_vector_round_trips() {
         y: 0x0102_0304,
         visible: true,
     };
-    let expected = hex("00 02 00 00 34 12 44 33 22 11 fe ff ff ff 04 03 02 01 01");
+    let expected = hex("04 02 00 00 34 12 44 33 22 11 fe ff ff ff 04 03 02 01 01");
     let mut encoded = Vec::new();
     encode_cursor_datagram(cursor, &mut encoded);
     assert_eq!(encoded, expected);
@@ -235,7 +256,7 @@ fn cursor_datagram_golden_vector_round_trips() {
 #[test]
 fn hello_control_prefix_and_topology_golden_vectors_round_trip() {
     let hello = ControlMessage::Hello(Hello {
-        protocol_version: 0,
+        protocol_version: PROTOCOL_VERSION,
         device_name: "A".into(),
         os: OsType::MacOs,
         app_version: "1".into(),
@@ -244,7 +265,7 @@ fn hello_control_prefix_and_topology_golden_vectors_round_trip() {
         max_height: 1080,
         features: 1,
     });
-    let hello_vector = hex("13 00 00 00 01 00 01 41 02 01 31 34 12 01 00 00 00 38 04 01 00 00 00");
+    let hello_vector = hex("13 00 00 00 01 04 01 41 02 01 31 34 12 01 00 00 00 38 04 01 00 00 00");
     assert_eq!(&frame(&hello)[..4], &hex("13 00 00 00"));
     assert_eq!(frame(&hello), hello_vector);
     assert_eq!(ControlMessage::decode_body(&hello_vector[4..]), Ok(hello));
@@ -330,16 +351,52 @@ fn every_input_event_tag_has_a_golden_vector() {
 
 #[test]
 fn clipboard_and_cursor_shape_golden_vectors_round_trip() {
+    for (enabled, expected) in [(true, "02 00 00 00 12 01"), (false, "02 00 00 00 12 00")] {
+        let control = ControlMessage::ClipboardSyncControl(ClipboardSyncControl { enabled });
+        let expected = hex(expected);
+        assert_eq!(frame(&control), expected);
+        assert_eq!(ControlMessage::decode_body(&expected[4..]), Ok(control));
+    }
+
     let clipboard = ControlMessage::ClipboardUpdate(ClipboardUpdate {
         seq: 7,
         origin: ClipboardOrigin::Viewer,
+        logical_clock: LogicalClock::new(9).expect("clock within bound"),
         text: "hi".into(),
     });
-    let clipboard_vector = hex("0d 00 00 00 0b 07 00 00 00 00 01 02 00 00 00 68 69");
+    let clipboard_vector =
+        hex("16 00 00 00 0b 07 00 00 00 00 01 09 00 00 00 00 00 00 00 01 02 00 00 00 68 69");
     assert_eq!(frame(&clipboard), clipboard_vector);
     assert_eq!(
         ControlMessage::decode_body(&clipboard_vector[4..]),
         Ok(clipboard)
+    );
+
+    let report = ControlMessage::ViewerReport(ViewerReport {
+        epoch: 0x1234,
+        loss_permille: 12,
+        frame_loss_permille: 34,
+        rtt_ms: 55,
+        decode_ms_p95: 6,
+        dropped_frames: 7,
+    });
+    let report_vector = hex("13 00 00 00 11 34 12 0c 00 22 00 37 00 00 00 06 00 00 00 07 00 00 00");
+    assert_eq!(frame(&report), report_vector);
+    assert_eq!(ControlMessage::decode_body(&report_vector[4..]), Ok(report));
+
+    let adjustment = ControlMessage::QualityAdjustment(QualityAdjustment {
+        epoch: 0x1234,
+        reason: QualityAdjustmentReason::QueueOverflow,
+        from_height: 720,
+        to_height: 480,
+        from_bitrate_bps: 3_500_000,
+        to_bitrate_bps: 1_500_000,
+    });
+    let adjustment_vector = hex("10 00 00 00 13 34 12 02 d0 02 e0 01 e0 67 35 00 60 e3 16 00");
+    assert_eq!(frame(&adjustment), adjustment_vector);
+    assert_eq!(
+        ControlMessage::decode_body(&adjustment_vector[4..]),
+        Ok(adjustment)
     );
 
     let cursor = ControlMessage::CursorShape(CursorShape {
@@ -348,12 +405,53 @@ fn clipboard_and_cursor_shape_golden_vectors_round_trip() {
         height: 1,
         hotspot_x: 1,
         hotspot_y: 0,
+        blend_mode: racc_proto::CursorBlendMode::PremultipliedAlpha,
         bgra: vec![0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88],
     });
     let cursor_vector =
-        hex("15 00 00 00 0f 05 00 00 00 02 00 01 00 01 00 00 00 11 22 33 44 55 66 77 88");
+        hex("16 00 00 00 0f 05 00 00 00 02 00 01 00 01 00 00 00 00 11 22 33 44 55 66 77 88");
     assert_eq!(frame(&cursor), cursor_vector);
     assert_eq!(ControlMessage::decode_body(&cursor_vector[4..]), Ok(cursor));
+}
+
+#[test]
+fn cursor_blend_modes_round_trip_with_stable_wire_values() {
+    for (mode, wire_value) in [
+        (racc_proto::CursorBlendMode::PremultipliedAlpha, 0),
+        (racc_proto::CursorBlendMode::WindowsMaskedColor, 1),
+        (racc_proto::CursorBlendMode::WindowsAndXor, 2),
+    ] {
+        let message = ControlMessage::CursorShape(CursorShape {
+            shape_id: 0x0102_0304,
+            width: 1,
+            height: 1,
+            hotspot_x: 0,
+            hotspot_y: 0,
+            blend_mode: mode,
+            bgra: vec![0, 0, 0, 0],
+        });
+        let encoded = frame(&message);
+        assert_eq!(encoded[17], wire_value);
+        assert_eq!(ControlMessage::decode_body(&encoded[4..]), Ok(message));
+    }
+}
+
+#[test]
+fn quality_adjustment_rejects_invalid_reason_tier_and_bitrate() {
+    let valid = hex("10 00 00 00 13 34 12 02 d0 02 e0 01 e0 67 35 00 60 e3 16 00");
+    for (index, value) in [
+        (7, 6),
+        (8, 0xf4),
+        (9, 0x01),
+        (12, 0xff),
+        (13, 0xff),
+        (14, 0xff),
+        (15, 0xff),
+    ] {
+        let mut malformed = valid.clone();
+        malformed[index] = value;
+        assert!(ControlMessage::decode_body(&malformed[4..]).is_err());
+    }
 }
 
 #[test]
@@ -376,6 +474,11 @@ fn every_control_message_round_trips_and_rejects_trailing_bytes() {
             ControlMessage::ResumeVideo(value) => assert_payload_round_trip(value, payload),
             ControlMessage::InputEvent(value) => assert_payload_round_trip(value, payload),
             ControlMessage::ClipboardUpdate(value) => assert_payload_round_trip(value, payload),
+            ControlMessage::ViewerReport(value) => assert_payload_round_trip(value, payload),
+            ControlMessage::ClipboardSyncControl(value) => {
+                assert_payload_round_trip(value, payload)
+            }
+            ControlMessage::QualityAdjustment(value) => assert_payload_round_trip(value, payload),
             ControlMessage::StatsReport(value) => assert_payload_round_trip(value, payload),
             ControlMessage::Ping(value) => assert_payload_round_trip(value, payload),
             ControlMessage::Pong(value) => assert_payload_round_trip(value, payload),
@@ -407,6 +510,7 @@ fn boundary_values_round_trip() {
         height: 128,
         hotspot_x: 127,
         hotspot_y: 127,
+        blend_mode: racc_proto::CursorBlendMode::PremultipliedAlpha,
         bgra: vec![0xa5; MAX_CURSOR_BYTES],
     };
     let messages = vec![
@@ -471,6 +575,10 @@ fn boundary_values_round_trip() {
         ControlMessage::ClipboardUpdate(ClipboardUpdate {
             seq: u32::MAX,
             origin: ClipboardOrigin::Host,
+            logical_clock: LogicalClock {
+                version: CLIPBOARD_LOGICAL_CLOCK_VERSION,
+                counter: MAX_CLIPBOARD_LOGICAL_CLOCK,
+            },
             text: max_text,
         }),
         ControlMessage::InputEvent(InputEvent {
@@ -489,6 +597,14 @@ fn boundary_values_round_trip() {
         ControlMessage::Pong(Pong {
             nonce: 0,
             echo_ts_us: 0,
+        }),
+        ControlMessage::ViewerReport(ViewerReport {
+            epoch: u16::MAX,
+            loss_permille: 1000,
+            frame_loss_permille: 1000,
+            rtt_ms: MAX_VIEWER_REPORT_DURATION_MS,
+            decode_ms_p95: MAX_VIEWER_REPORT_DURATION_MS,
+            dropped_frames: MAX_VIEWER_REPORT_DROPPED_FRAMES,
         }),
     ];
     for message in messages {

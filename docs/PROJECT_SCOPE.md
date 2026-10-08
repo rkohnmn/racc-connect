@@ -185,9 +185,9 @@ Earlier research targeted 4K60 with sub-30 ms glass-to-glass latency, HEVC and A
 
 - The agent binds only to the Tailscale interface address.
 - WireGuard provides authentication and encryption; no application-layer encryption.
-- Peer identity is checked with Tailscale's LocalAPI `whois` against a host-side allowlist, with an approval prompt for new peers.
+- Peer identity is checked with Tailscale's local `whois` CLI command against a host-side allowlist, with an approval prompt for new peers.
 - All inbound data is treated as hostile: bounded sizes, no panics on malformed input.
-- No accounts, passwords, public certificates, analytics or external network calls beyond the tailnet and Tailscale LocalAPI.
+- No accounts, passwords, public certificates, analytics or external network calls beyond the tailnet; local Tailscale CLI/daemon identity queries are permitted.
 
 ### 6.7 Resource targets (to be measured, not promised)
 
@@ -282,7 +282,7 @@ The project is successful when, on the owner's three machines:
 ## 12. Assumptions and constraints
 
 - The owner controls all three machines and the tailnet.
-- Tailscale is installed, logged in and running on each machine, and its LocalAPI is reachable.
+- Tailscale is installed, logged in and running on each machine, and its CLI identity commands are reachable.
 - Windows 10 machines have a GPU with a hardware H.264 encoder; otherwise software encode is used with higher CPU cost.
 - The Mac can run at least macOS 12.3 for ScreenCaptureKit; otherwise the CGDisplayStream fallback is used.
 - Initial release is for personal use; commercial distribution would require a separate licensing and support review.

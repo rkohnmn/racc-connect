@@ -119,7 +119,7 @@ For service and helper work (M6), you will test as an administrator and may need
 
 - All three machines must be on one tailnet and show as online in `tailscale status`.
 - Verify connectivity with `tailscale ping <peer>`. Note whether the path is `direct` or relayed through DERP.
-- The project reads peer status and identity (`whois`) from the Tailscale **LocalAPI**. How that API is reached differs by platform and install flavor (for example, a named pipe on Windows, a Unix socket for the Linux daemon, and a different mechanism for the macOS GUI app). Milestone M2 or the `identity` crate must **verify the actual access method on each machine** and record it in `docs/decisions/`. Do not assume one mechanism works everywhere.
+- The `racc-identity` crate uses the Tailscale CLI as its supported local identity boundary: `status --json`, `whois --json <ip>`, and `ip -4` / `ip -6`. It starts the executable directly with bounded output and a 2-second default deadline. The CLI delegates to the installed local Tailscale backend; this project does not guess or connect to undocumented platform sockets or named pipes. On macOS the App Store client bundles the CLI at `/Applications/Tailscale.app/Contents/MacOS/Tailscale`; set `TAILSCALE_BE_CLI=1`. Standalone CLI integration at `/usr/local/bin/tailscale` requires macOS Ventura 13 or later, so the bundled path is important for Monterey. See [docs/IDENTITY.md](IDENTITY.md), the [Tailscale CLI reference](https://tailscale.com/docs/reference/tailscale-cli), and the [Tailscale daemon overview](https://tailscale.com/docs/reference/tailscaled).
 
 ---
 

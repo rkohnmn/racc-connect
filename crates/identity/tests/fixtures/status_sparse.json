@@ -1,0 +1,10 @@
+{
+  "BackendState": "Running",
+  "Peer": {
+    "peer-placeholder": {
+      "Online": true,
+      "UnrecognizedField": "ignored"
+    }
+  },
+  "UnknownField": 42
+}

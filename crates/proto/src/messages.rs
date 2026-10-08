@@ -1,7 +1,8 @@
 use crate::codec::{Reader, Writer};
 use crate::{
-    ProtoError, ProtoResult, MAX_CLIPBOARD_BYTES, MAX_CONTROL_FRAME_BYTES, MAX_CURSOR_BYTES,
-    MAX_CURSOR_DIM, MAX_DISPLAYS,
+    ProtoError, ProtoResult, CLIPBOARD_LOGICAL_CLOCK_VERSION, MAX_CLIPBOARD_BYTES,
+    MAX_CLIPBOARD_LOGICAL_CLOCK, MAX_CONTROL_FRAME_BYTES, MAX_CURSOR_BYTES, MAX_CURSOR_DIM,
+    MAX_DISPLAYS, MAX_VIEWER_REPORT_DROPPED_FRAMES, MAX_VIEWER_REPORT_DURATION_MS,
 };
 
 /// Identifies the operating system represented in a handshake.
@@ -255,15 +256,46 @@ pub enum ClipboardOrigin {
     Host = 1,
 }
 
+/// Versioned Lamport clock used to order concurrent clipboard changes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LogicalClock {
+    /// Logical-clock schema version; currently `CLIPBOARD_LOGICAL_CLOCK_VERSION`.
+    pub version: u8,
+    /// Bounded Lamport counter, from zero through `MAX_CLIPBOARD_LOGICAL_CLOCK`.
+    pub counter: u64,
+}
+
+impl LogicalClock {
+    /// Creates a current-version logical clock after checking its counter bound.
+    pub fn new(counter: u64) -> ProtoResult<Self> {
+        if counter > MAX_CLIPBOARD_LOGICAL_CLOCK {
+            return Err(ProtoError::InvalidValue);
+        }
+        Ok(Self {
+            version: CLIPBOARD_LOGICAL_CLOCK_VERSION,
+            counter,
+        })
+    }
+}
+
 /// UTF-8 text clipboard update.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ClipboardUpdate {
     /// Monotonic clipboard sequence number.
     pub seq: u32,
-    /// Side that originated the update.
+    /// Side that originated the update; breaks ties between equal logical clocks.
     pub origin: ClipboardOrigin,
+    /// Versioned Lamport clock used for deterministic conflict ordering.
+    pub logical_clock: LogicalClock,
     /// Clipboard UTF-8 text, at most MAX_CLIPBOARD_BYTES bytes.
     pub text: String,
+}
+
+/// Enables or disables both text clipboard directions for one authenticated session.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ClipboardSyncControl {
+    /// Whether text clipboard synchronization is enabled for this session.
+    pub enabled: bool,
 }
 
 /// Host display-capture backend reported in telemetry.
@@ -323,6 +355,58 @@ pub struct StatsReport {
     pub actual_bitrate_kbps: u32,
 }
 
+/// Viewer feedback used by the host quality controller.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ViewerReport {
+    /// Stream epoch these measurements describe.
+    pub epoch: u16,
+    /// Datagram loss fraction in permille, from zero through 1000.
+    pub loss_permille: u16,
+    /// Incomplete-frame loss fraction in permille, from zero through 1000.
+    pub frame_loss_permille: u16,
+    /// Measured round-trip time in milliseconds, at most 60 seconds.
+    pub rtt_ms: u32,
+    /// 95th-percentile decode duration in milliseconds, at most 60 seconds.
+    pub decode_ms_p95: u32,
+    /// Frames dropped in the reporting interval, at most one million.
+    pub dropped_frames: u32,
+}
+
+/// Why the host quality policy changed its stream target.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum QualityAdjustmentReason {
+    /// Sustained packet or frame loss.
+    Loss = 0,
+    /// Sustained round-trip-time inflation.
+    RttInflation = 1,
+    /// Repeated sender queue overflow.
+    QueueOverflow = 2,
+    /// Stable conditions allowed a gradual increase.
+    Stable = 3,
+    /// A fixed quality preference was applied.
+    Preference = 4,
+    /// The bitrate target was trimmed within the current tier.
+    BitrateTrim = 5,
+}
+
+/// Host quality target change reported to the active viewer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct QualityAdjustment {
+    /// Active stream epoch for this adjustment.
+    pub epoch: u16,
+    /// Policy reason for the adjustment.
+    pub reason: QualityAdjustmentReason,
+    /// Stream height before the adjustment.
+    pub from_height: u16,
+    /// Stream height after the adjustment.
+    pub to_height: u16,
+    /// Bitrate target before the adjustment, in bits per second.
+    pub from_bitrate_bps: u32,
+    /// Bitrate target after the adjustment, in bits per second.
+    pub to_bitrate_bps: u32,
+}
+
 /// Ping request used to measure round-trip time.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Ping {
@@ -341,6 +425,33 @@ pub struct Pong {
     pub echo_ts_us: u64,
 }
 
+/// Blend/compositing behavior for a cursor bitmap.
+///
+/// Values are stable wire values and are serialized as one byte.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[repr(u8)]
+pub enum CursorBlendMode {
+    /// BGRA channels contain premultiplied-alpha color pixels.
+    PremultipliedAlpha = 0,
+    /// BGRA alpha mask is 0 for replace and 0xFF for RGB XOR.
+    WindowsMaskedColor = 1,
+    /// BGRA alpha encodes an AND mask and RGB encodes an XOR mask.
+    WindowsAndXor = 2,
+}
+
+impl TryFrom<u8> for CursorBlendMode {
+    type Error = ProtoError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::PremultipliedAlpha),
+            1 => Ok(Self::WindowsMaskedColor),
+            2 => Ok(Self::WindowsAndXor),
+            _ => Err(ProtoError::InvalidValue),
+        }
+    }
+}
+
 /// BGRA cursor bitmap transported over the reliable control channel.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CursorShape {
@@ -354,6 +465,8 @@ pub struct CursorShape {
     pub hotspot_x: u16,
     /// Vertical hotspot coordinate, less than height.
     pub hotspot_y: u16,
+    /// Pixel compositing mode, serialized at payload byte offset 12.
+    pub blend_mode: CursorBlendMode,
     /// BGRA bitmap bytes, exactly width times height times four.
     pub bgra: Vec<u8>,
 }
@@ -381,7 +494,7 @@ pub struct Goodbye {
     pub reason: GoodbyeReason,
 }
 
-/// Typed v0 control message. Variant order is not its wire type number.
+/// Typed protocol v2 control message. Variant order is not its wire type number.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ControlMessage {
     /// Type 1, viewer handshake.
@@ -416,6 +529,12 @@ pub enum ControlMessage {
     CursorShape(CursorShape),
     /// Type 16, connection close.
     Goodbye(Goodbye),
+    /// Type 17, viewer-to-host quality feedback.
+    ViewerReport(ViewerReport),
+    /// Type 18, viewer-to-host session clipboard enablement.
+    ClipboardSyncControl(ClipboardSyncControl),
+    /// Type 19, host-to-viewer quality-policy outcome.
+    QualityAdjustment(QualityAdjustment),
 }
 
 /// Common payload codec implemented by each typed control-message structure.
@@ -477,6 +596,9 @@ impl ControlMessage {
             Self::Pong(value) => encode_typed(value, &mut payload)?,
             Self::CursorShape(value) => encode_typed(value, &mut payload)?,
             Self::Goodbye(value) => encode_typed(value, &mut payload)?,
+            Self::ViewerReport(value) => encode_typed(value, &mut payload)?,
+            Self::ClipboardSyncControl(value) => encode_typed(value, &mut payload)?,
+            Self::QualityAdjustment(value) => encode_typed(value, &mut payload)?,
         };
         Ok((message_type, payload))
     }
@@ -512,6 +634,9 @@ fn decode_payload_for_type(message_type: u8, input: &[u8]) -> ProtoResult<(Contr
         14 => decode!(Pong, Pong),
         15 => decode!(CursorShape, CursorShape),
         16 => decode!(Goodbye, Goodbye),
+        17 => decode!(ViewerReport, ViewerReport),
+        18 => decode!(ClipboardSyncControl, ClipboardSyncControl),
+        19 => decode!(QualityAdjustment, QualityAdjustment),
         _ => Err(ProtoError::UnknownMessageType),
     }
 }
@@ -583,6 +708,18 @@ fn decode_encoder(value: u8) -> ProtoResult<Encoder> {
         4 => Ok(Encoder::Nvenc),
         5 => Ok(Encoder::Amf),
         6 => Ok(Encoder::Qsv),
+        _ => Err(ProtoError::InvalidValue),
+    }
+}
+
+fn decode_quality_adjustment_reason(value: u8) -> ProtoResult<QualityAdjustmentReason> {
+    match value {
+        0 => Ok(QualityAdjustmentReason::Loss),
+        1 => Ok(QualityAdjustmentReason::RttInflation),
+        2 => Ok(QualityAdjustmentReason::QueueOverflow),
+        3 => Ok(QualityAdjustmentReason::Stable),
+        4 => Ok(QualityAdjustmentReason::Preference),
+        5 => Ok(QualityAdjustmentReason::BitrateTrim),
         _ => Err(ProtoError::InvalidValue),
     }
 }
@@ -963,17 +1100,39 @@ fn write_clipboard(value: &ClipboardUpdate, writer: &mut Writer) -> ProtoResult<
     if value.text.len() > MAX_CLIPBOARD_BYTES {
         return Err(ProtoError::TooLarge);
     }
+    validate_logical_clock(value.logical_clock)?;
     writer.u32(value.seq);
     writer.u8(value.origin as u8);
+    writer.u8(value.logical_clock.version);
+    writer.u64(value.logical_clock.counter);
     writer.u8(1);
     writer.u32(u32::try_from(value.text.len()).map_err(|_| ProtoError::TooLarge)?);
     writer.bytes.extend_from_slice(value.text.as_bytes());
     Ok(())
 }
 
+fn write_clipboard_sync_control(
+    value: &ClipboardSyncControl,
+    writer: &mut Writer,
+) -> ProtoResult<()> {
+    writer.u8(u8::from(value.enabled));
+    Ok(())
+}
+
+fn read_clipboard_sync_control(reader: &mut Reader<'_>) -> ProtoResult<ClipboardSyncControl> {
+    Ok(ClipboardSyncControl {
+        enabled: read_bool(reader)?,
+    })
+}
+
 fn read_clipboard(reader: &mut Reader<'_>) -> ProtoResult<ClipboardUpdate> {
     let seq = reader.u32()?;
     let origin = decode_clipboard_origin(reader.u8()?)?;
+    let logical_clock = LogicalClock {
+        version: reader.u8()?,
+        counter: reader.u64()?,
+    };
+    validate_logical_clock(logical_clock)?;
     if reader.u8()? != 1 {
         return Err(ProtoError::InvalidValue);
     }
@@ -985,7 +1144,21 @@ fn read_clipboard(reader: &mut Reader<'_>) -> ProtoResult<ClipboardUpdate> {
     let text = core::str::from_utf8(bytes)
         .map_err(|_| ProtoError::InvalidUtf8)?
         .to_owned();
-    Ok(ClipboardUpdate { seq, origin, text })
+    Ok(ClipboardUpdate {
+        seq,
+        origin,
+        logical_clock,
+        text,
+    })
+}
+
+fn validate_logical_clock(clock: LogicalClock) -> ProtoResult<()> {
+    if clock.version != CLIPBOARD_LOGICAL_CLOCK_VERSION
+        || clock.counter > MAX_CLIPBOARD_LOGICAL_CLOCK
+    {
+        return Err(ProtoError::InvalidValue);
+    }
+    Ok(())
 }
 
 fn write_stats(value: &StatsReport, writer: &mut Writer) -> ProtoResult<()> {
@@ -1018,6 +1191,91 @@ fn read_stats(reader: &mut Reader<'_>) -> ProtoResult<StatsReport> {
         target_bitrate_kbps: reader.u32()?,
         actual_bitrate_kbps: reader.u32()?,
     })
+}
+
+fn write_viewer_report(value: &ViewerReport, writer: &mut Writer) -> ProtoResult<()> {
+    validate_viewer_report(value)?;
+    writer.u16(value.epoch);
+    writer.u16(value.loss_permille);
+    writer.u16(value.frame_loss_permille);
+    writer.u32(value.rtt_ms);
+    writer.u32(value.decode_ms_p95);
+    writer.u32(value.dropped_frames);
+    Ok(())
+}
+
+fn read_viewer_report(reader: &mut Reader<'_>) -> ProtoResult<ViewerReport> {
+    let value = ViewerReport {
+        epoch: reader.u16()?,
+        loss_permille: reader.u16()?,
+        frame_loss_permille: reader.u16()?,
+        rtt_ms: reader.u32()?,
+        decode_ms_p95: reader.u32()?,
+        dropped_frames: reader.u32()?,
+    };
+    validate_viewer_report(&value)?;
+    Ok(value)
+}
+
+fn validate_viewer_report(value: &ViewerReport) -> ProtoResult<()> {
+    if value.loss_permille > 1000
+        || value.frame_loss_permille > 1000
+        || value.rtt_ms > MAX_VIEWER_REPORT_DURATION_MS
+        || value.decode_ms_p95 > MAX_VIEWER_REPORT_DURATION_MS
+        || value.dropped_frames > MAX_VIEWER_REPORT_DROPPED_FRAMES
+    {
+        return Err(ProtoError::InvalidValue);
+    }
+    Ok(())
+}
+
+fn write_quality_adjustment(value: &QualityAdjustment, writer: &mut Writer) -> ProtoResult<()> {
+    validate_quality_adjustment(value)?;
+    writer.u16(value.epoch);
+    writer.u8(value.reason as u8);
+    writer.u16(value.from_height);
+    writer.u16(value.to_height);
+    writer.u32(value.from_bitrate_bps);
+    writer.u32(value.to_bitrate_bps);
+    Ok(())
+}
+
+fn read_quality_adjustment(reader: &mut Reader<'_>) -> ProtoResult<QualityAdjustment> {
+    let value = QualityAdjustment {
+        epoch: reader.u16()?,
+        reason: decode_quality_adjustment_reason(reader.u8()?)?,
+        from_height: reader.u16()?,
+        to_height: reader.u16()?,
+        from_bitrate_bps: reader.u32()?,
+        to_bitrate_bps: reader.u32()?,
+    };
+    validate_quality_adjustment(&value)?;
+    Ok(value)
+}
+
+fn validate_quality_adjustment(value: &QualityAdjustment) -> ProtoResult<()> {
+    let tier_bitrate = |height| match height {
+        480 => Some((1_050_000, 1_500_000)),
+        720 => Some((2_450_000, 3_500_000)),
+        1080 => Some((4_900_000, 7_000_000)),
+        _ => None,
+    };
+    let Some((from_min, from_max)) = tier_bitrate(value.from_height) else {
+        return Err(ProtoError::InvalidValue);
+    };
+    let Some((to_min, to_max)) = tier_bitrate(value.to_height) else {
+        return Err(ProtoError::InvalidValue);
+    };
+    if !(from_min..=from_max).contains(&value.from_bitrate_bps)
+        || !(to_min..=to_max).contains(&value.to_bitrate_bps)
+        || (value.reason == QualityAdjustmentReason::BitrateTrim
+            && value.from_height != value.to_height)
+        || (value.reason != QualityAdjustmentReason::BitrateTrim
+            && value.from_height == value.to_height)
+    {
+        return Err(ProtoError::InvalidValue);
+    }
+    Ok(())
 }
 
 fn write_ping(value: &Ping, writer: &mut Writer) -> ProtoResult<()> {
@@ -1080,6 +1338,7 @@ fn write_cursor_shape(value: &CursorShape, writer: &mut Writer) -> ProtoResult<(
     writer.u16(value.height);
     writer.u16(value.hotspot_x);
     writer.u16(value.hotspot_y);
+    writer.u8(value.blend_mode as u8);
     writer.bytes.extend_from_slice(&value.bgra);
     Ok(())
 }
@@ -1090,6 +1349,7 @@ fn read_cursor_shape(reader: &mut Reader<'_>) -> ProtoResult<CursorShape> {
     let height = reader.u16()?;
     let hotspot_x = reader.u16()?;
     let hotspot_y = reader.u16()?;
+    let blend_mode = CursorBlendMode::try_from(reader.u8()?)?;
     let length = cursor_byte_length(width, height)?;
     if hotspot_x >= width || hotspot_y >= height {
         return Err(ProtoError::InvalidValue);
@@ -1101,6 +1361,7 @@ fn read_cursor_shape(reader: &mut Reader<'_>) -> ProtoResult<CursorShape> {
         height,
         hotspot_x,
         hotspot_y,
+        blend_mode,
         bgra,
     })
 }
@@ -1167,3 +1428,16 @@ impl_payload!(Ping, 13, write_ping, read_ping);
 impl_payload!(Pong, 14, write_pong, read_pong);
 impl_payload!(CursorShape, 15, write_cursor_shape, read_cursor_shape);
 impl_payload!(Goodbye, 16, write_goodbye, read_goodbye);
+impl_payload!(ViewerReport, 17, write_viewer_report, read_viewer_report);
+impl_payload!(
+    ClipboardSyncControl,
+    18,
+    write_clipboard_sync_control,
+    read_clipboard_sync_control
+);
+impl_payload!(
+    QualityAdjustment,
+    19,
+    write_quality_adjustment,
+    read_quality_adjustment
+);

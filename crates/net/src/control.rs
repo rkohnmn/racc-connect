@@ -303,9 +303,9 @@ mod tests {
     use super::*;
     use racc_proto::{
         CaptureBackend, ClipboardOrigin, ClipboardUpdate, CursorShape, DisplayInfo, Encoder,
-        Goodbye, GoodbyeReason, Hello, HelloAck, HelloStatus, InputEvent, InputEventKind, OsType,
-        PauseVideo, Ping, Pong, RequestKeyframe, ResumeVideo, SetQuality, StatsReport, StreamCodec,
-        StreamReset, StreamStatus, SwitchMonitor, TopologyAnnounce,
+        Goodbye, GoodbyeReason, Hello, HelloAck, HelloStatus, InputEvent, InputEventKind,
+        LogicalClock, OsType, PauseVideo, Ping, Pong, RequestKeyframe, ResumeVideo, SetQuality,
+        StatsReport, StreamCodec, StreamReset, StreamStatus, SwitchMonitor, TopologyAnnounce,
     };
     use std::net::TcpListener;
     use std::thread;
@@ -385,6 +385,10 @@ mod tests {
             ControlMessage::ClipboardUpdate(ClipboardUpdate {
                 seq: 5,
                 origin: ClipboardOrigin::Viewer,
+                logical_clock: LogicalClock {
+                    version: racc_proto::CLIPBOARD_LOGICAL_CLOCK_VERSION,
+                    counter: 5,
+                },
                 text: "hello".to_owned(),
             }),
             ControlMessage::StatsReport(StatsReport {
@@ -411,6 +415,7 @@ mod tests {
                 height: 1,
                 hotspot_x: 0,
                 hotspot_y: 0,
+                blend_mode: racc_proto::CursorBlendMode::PremultipliedAlpha,
                 bgra: vec![0, 0, 0, 255],
             }),
             ControlMessage::Goodbye(Goodbye {

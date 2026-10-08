@@ -8,7 +8,7 @@ Probe date: 2026-10-06 (America/New_York).
 - [VERIFIED-RUN] rustc reports 1.95.0 (59807616e 2026-04-14); Cargo reports 1.95.0 (f2d3ce0bd 2026-03-21).
 - [VERIFIED-RUN] The repository pins stable Rust 1.95.0 with rustfmt and clippy.
 - [COMPILE-ONLY] Installed targets: x86_64-pc-windows-msvc and x86_64-apple-darwin. Both target-add commands exited 0; Windows was already current and macOS standard-library support was installed.
-- [VERIFIED-RUN] Tailscale is not installed or available on PATH on this Windows PC. No tailnet behavior was tested.
+- [VERIFIED-RUN] The 2026-10-06 probe did not find Tailscale on PATH; the M5c probe on 2026-10-07 found the CLI and verified read-only live identity behavior on Windows PC #1. See the M5c session record below.
 - [VERIFIED-RUN] This machine matches Windows PC #1 by its NVIDIA GeForce RTX 3050 Ti Laptop GPU. Windows build, GPU drivers, and three active 1920×1080 displays were probed read-only; see docs/HARDWARE.md. Windows PC #2 and the Mac remain owner-reported only.
 
 ## Milestone status
@@ -21,22 +21,22 @@ Probe date: 2026-10-06 (America/New_York).
 | M2 Transport | Complete | [VERIFIED-RUN] M2 acceptance checks 1–13 passed on Windows 10.0.19045; see the final report below. Windows and Intel macOS target checks are COMPILE-ONLY. |
 | M2.5 Transport audit | Complete | [VERIFIED-RUN] All 14 M2.5 acceptance checks passed; the audit and final evidence are recorded below and were pushed to origin/main. No M3 work was started. |
 | M3a Topology, coordinate math, telemetry | Complete | [VERIFIED-RUN] All M3a checks pass; [COMPILE-ONLY] Windows and macOS cross-checks pass. The user authorized a normal push, and the commits were published as a fast-forward to origin/main. |
-| M3b Host and viewer session lifecycle | Complete | [VERIFIED-RUN] 45 session tests and all standard workspace checks passed; Windows and macOS target checks passed [COMPILE-ONLY]. See the M3b report below. |
+| M3b Host and viewer session lifecycle | Complete | [VERIFIED-RUN] 100 session tests passed, including 20 virtual-time multi-event scenarios and 10,000-case property testing; workspace format, strict Clippy, full tests, Windows target compile and repository layering/feature checks pass. See final integrated audit below. |
 | M4a UI toolkit spike | Complete | [VERIFIED-RUN] iced selected and compared against Slint; [HUMAN-VERIFIED] owner reports no visible stutter on PC #1. See ADR 0001. |
 | M4b UI shell | Best-judgment redesign implemented; owner visual review deferred | [TESTED-FAKE] app checks pass. The owner asked us to continue while screen review is unavailable; see `blocked.md`. |
-| M5 Windows capture and encode | Not started | [UNVERIFIED] |
-| M6 Windows host agent | Not started | [UNVERIFIED] |
-| M7 End-to-end viewer | Not started | [UNVERIFIED] |
-| M8 Clipboard and telemetry | Not started | [UNVERIFIED] |
-| M9 macOS host and viewer | Not started | [UNVERIFIED] |
-| M10 Polish and packaging | Not started | [UNVERIFIED] |
+| M5 Windows capture and encode | Partial — hardware acceptance pending | [VERIFIED-RUN] PC #1 metadata-only capture probe; [VERIFIED-RUN — SYNTHETIC ONLY] 90-frame 720p Media Foundation encode inspected and decoded; [HUMAN-PENDING] real capture, playback, mode recovery, and PC #2. See M5 report below. |
+| M6 Windows host agent | Partial — service/helper, foreground host, named-pipe IPC and bounded probe sources are integrated; acceptance pending | [TESTED-FAKE] host-agent tests cover authorization, attempt limiting, IPC and input; control-server shutdown now drains accepted handlers through disconnect callbacks. [COMPILE-ONLY] Windows target passes. The app hosting toggle remains `Unavailable` because reversible runtime stop/rebind is not implemented; pipe/service/Tailscale/hardware checks remain pending. |
+| M7 End-to-end viewer | Partial — discovery-first viewer, decoder factory, live runtime, input controls and wgpu NV12 renderer are source-integrated | [TESTED-FAKE] app/core reducer and runtime tests pass, including automatic reconnect copy, selected decoder telemetry and path metadata. [COMPILE-ONLY] full Windows workspace target passes; macOS app target strict Clippy passes. No real DDA→encode→decode→render session, DXVA path, two-PC input, or human measurements. |
+| M8 Clipboard and telemetry | Partial — protocol v3 session control, Windows/macOS host/viewer text adapters, telemetry and events are source-integrated | [TESTED-FAKE] policy, loop prevention, opt-in/disable wire control, bounded queues, runtime/host loopback and telemetry tests pass. [VERIFIED-RUN] An explicitly invoked Windows OS clipboard test against a fake remote passed with fixed harmless text. No real PC-to-PC clipboard round-trip, live telemetry/pacing comparison, or Mac host StatsReport measurement. |
+| M9 macOS host and viewer | Partial — Mac capture, VideoToolbox, IPC, clipboard, permissions, viewer, and machine-wide CPU telemetry are source-integrated | [COMPILE-ONLY] Apple-target app Clippy plus capture/decode/input/clipboard checks pass. Three deterministic CPU-sampler fake-counter tests and an isolated Apple-target probe pass. The full host-agent Apple target check is blocked before Rust compilation because OpenH264 cannot find target `c++`. Monterey behavior, LaunchAgent execution, permissions, and all Mac runtime tests remain HUMAN-PENDING; M9 is not complete until the Mac checklist passes. ADR 0042 specifies pointer-in-video on Mac. |
+| M10 Polish and packaging | Partial — UI preferences, tray/window lifecycle, original artwork, notices, and Windows/macOS packaging sources are integrated | [TESTED-FAKE] settings/tray/geometry/autostart/single-instance tests pass. [VERIFIED-RUN] Windows release profile was measured and a checksummed portable ZIP was built. [HUMAN-PENDING] Inno installer, clean install/uninstall, native tray, Mac bundle/signing, idle memory, 24-hour soak and owner license/distribution decision remain open. `scripts/check-all.ps1` reaches cargo-deny and fails only on required OpenH264 BSD-2-Clause versus the unchanged allowlist. |
 
 ## Verified
 
-- [VERIFIED-RUN] Both check-all scripts ran on Windows 10.0.19045 and exited 0.
+- [VERIFIED-RUN — HISTORICAL CHECKPOINT] Both check-all scripts exited 0 at earlier M4b checkpoints. The current M10-integrated check now runs Windows/macOS-target cargo-deny and exposes the required OpenH264 BSD-2 allowlist conflict; see the latest session record.
 - [VERIFIED-RUN] The two binary stubs printed their package names and versions.
 - [VERIFIED-RUN] The layering check passed normally and rejected a temporary forbidden rd-core to rd-app dependency edge.
-- [COMPILE-ONLY] Workspace clippy and both platform cross-checks passed.
+- [VERIFIED-RUN — 2026-10-07] Current format, strict workspace Clippy and offline workspace tests passed. Layering, feature-gate and Windows MSVC workspace checks passed. Apple app strict Clippy and Apple-target capture/decode/input/clipboard checks passed; the full Apple host check is blocked before Rust code by unavailable target `c++` for OpenH264.
 - [VERIFIED-RUN] M1 bounded v0 protocol passed 20 racc-proto tests, the 10000-case property run, cargo-deny and both check-all scripts.
 - [HUMAN-PENDING] Real Windows, Mac, GPU, input, and Tailscale checks remain listed in docs/HARDWARE.md.
 
@@ -48,7 +48,11 @@ Probe date: 2026-10-06 (America/New_York).
 
 ## Blocked
 
-None.
+- Normal Codex sandboxed PowerShell creation still fails before process start with `helper_unknown_error: setup refresh had errors`. Elevated PowerShell was used for repo checks. User config already contains the documented `unelevated` fallback, but it requires restarting Codex; no supported in-task app/helper restart control is exposed. See `blocked.md` and [Windows sandbox troubleshooting](https://learn.chatgpt.com/docs/windows/windows-sandbox).
+- M8 peer-to-peer clipboard, live telemetry/pacing measurements and Mac runtime remain HUMAN-PENDING. Windows and macOS text adapters, telemetry and event feeds are source-integrated; the owner authorized enabled-session text sync and the fixed-string Windows OS clipboard/fake-remote test passed.
+- M9 still requires 2015 Mac hardware/runtime checks. Same-user Mac app/host IPC, LaunchAgent sources, pointer-in-video capture policy, and a machine-wide CPU sampler are integrated, but not run on Mac. Full Apple host compilation remains blocked before Rust compilation by missing target C++ tooling for OpenH264. The permission panel and explicit Settings buttons are unverified on Monterey.
+- M10's unchanged cargo-deny policy rejects the mandated OpenH264 BSD-2 fallback. The Windows portable artifact was built and measured, but private idle memory, clean install, native lifecycle behavior, Mac bundle and 24-hour soak remain HUMAN-PENDING. The project license and distribution scope remain owner decisions.
+- M11a remains ordered after M8 and M10 acceptance; its prompt preflight is not met while real peer/hardware acceptance and the license/policy decisions remain open. See `blocked.md` and `docs/OPEN_QUESTIONS.md`.
 
 ## Session log
 
@@ -470,9 +474,9 @@ M3b should implement viewer and host session lifecycle state machines using fake
 
 ### 2026-10-07 — Prompt inventory and dependency audit
 
-- [VERIFIED-REVIEW] Confirmed the prompt files present: M3b, M4b, M5a, M5c, M6, M7, M8, M9, M10, and M11a. M3b is complete; M4b visual review remains pending, and the owner explicitly directed that coding continue without waiting for it.
+- [VERIFIED-REVIEW] Confirmed the prompt files present: M3b, M4b, M5a, M5b, M5c, M6, M7, M8, M9, M10, and M11a. M3b is complete; M4b visual review remains pending, and the owner explicitly directed that coding continue without waiting for it.
 - [VERIFIED-REVIEW] Read-only audits found M5a, M5c, M6, M7, and M8 are not implemented beyond existing lower-level foundations. Their prompt-specific code, docs, tests, and human checklists remain outstanding as detailed in the prompts.
-- [VERIFIED-REVIEW] M6's M2.6 prerequisite is satisfied by the recorded v0 decision to keep incomplete-frame drops plus rate-limited keyframe requests and defer NACK/FEC (`docs/OPEN_QUESTIONS.md` items 14 and 17). M5b is not present in `prompts/` and is not implemented; derive its scope from AGENTS.md M5 (Windows H.264 hardware encode, OpenH264 fallback, `.h264` output) before M6.
+- [VERIFIED-REVIEW] M6's M2.6 prerequisite is satisfied by the recorded v0 decision to keep incomplete-frame drops plus rate-limited keyframe requests and defer NACK/FEC (`docs/OPEN_QUESTIONS.md` items 14 and 17). M5b is present and has a synthetic-only Media Foundation implementation and probe evidence (see the M5 report) before M6.
 - [HUMAN-PENDING] The M4b prompt asks the owner to inspect the UI and interaction checklist in `docs/HARDWARE.md`; the owner cannot inspect screens now. Apply best judgment, keep the review in `blocked.md`, and continue subsequent prompts as explicitly requested.
 - [UNVERIFIED] M9, M10, and M11a remain unimplemented and have hardware, packaging, and ordering prerequisites. M9 asks to run on the Mac itself and requires its OS, Tailscale, Screen Recording, and Accessibility checks. M10 still has unfilled license and distribution choices in its prompt and must follow M8 and M9 human checks; M11a must follow M8 and M10.
 
@@ -480,3 +484,99 @@ M3b should implement viewer and host session lifecycle state machines using fake
 
 - [VERIFIED-RUN] Started `cargo run -p racc-app -- --fake`; the process remains active and the terminal was queued in Codex so the owner can inspect the live window.
 - [HUMAN-PENDING] Owner visual and interaction review is still required. The agent-launched window is for review convenience and does not count as owner acceptance.
+
+### 2026-10-07 — M5c identity and discovery follow-up
+
+- [VERIFIED-RUN] Windows PC #1 read-only Tailscale CLI probe: version 1.102.4; status reported 2/2 online peers, aggregate route counts 0 direct/2 DERP, and self-bind validation succeeded. No peer identifiers or raw JSON were recorded.
+- [VERIFIED-RUN] Twenty status calls measured approximately 210 ms median / 339 ms p95. Whois succeeded 20/20 times at approximately 217 ms median / 439 ms p95.
+- [TESTED-FAKE] Current Node/UserProfile and legacy Machine/User parsing, fixture privacy, and identity crate unit tests were verified; strict all-target clippy passed after removing a redundant PathBuf conversion in the probe example.
+- [HUMAN-PENDING] Windows PC #2, Mac live identity checks, and M6 allowlist approval/rejection flow remain pending. M5 remains incomplete.
+
+### 2026-10-07 — M5 capture, encode, and identity follow-up
+
+- [TESTED-FAKE] `cargo test --offline -p racc-capture -p racc-encode -p racc-identity -p racc-input -p racc-clipboard` passed: capture 15, encode 20, identity 27, input 18, clipboard 9; all five doc-test harnesses passed. These are portable/fake tests and do not establish real capture, input, or clipboard behavior.
+- [VERIFIED-RUN — SYNTHETIC ONLY] On Windows PC #1, the Media Foundation encoder wrote 90/90 synthetic 1280×720 H.264 Main frames. `ffprobe` found 90 frames and zero B-frames; `ffmpeg` decoded the stream without errors. The elementary stream has no timestamps; 30 fps cadence was not measured. Evidence and command are in `docs/ENCODE.md`.
+- [COMPILE-ONLY] Windows capture and encode target checks were previously reported passing. The encoder macOS check is UNVERIFIED because OpenH264's cross build requires an unavailable C++ compiler.
+- [VERIFIED-RUN] The read-only M5c Tailscale CLI probe on Windows PC #1 is recorded above; PC #2 and Mac remain HUMAN-PENDING.
+- [HUMAN-PENDING] M5 remains incomplete: visible desktop capture and playback were not run; display-mode recovery, adapter affinity, PC #2, and real GPU paths still need owner checks in `docs/HARDWARE.md`.
+
+### 2026-10-07 — M6/M7 implementation foundations
+
+- [TESTED-FAKE] M6 foundations include the pure session supervisor policy, bounded platform-neutral IPC framing/messages, Tailscale allowlist state, and human-run install/uninstall scripts with dry-run support. The scripts were syntax-checked and dry-run only; no service configuration was changed. No SCM adapter, interactive helper launcher, live HostRuntime, named-pipe ACL adapter, or `racc-probe` is present yet.
+- [TESTED-FAKE] M7 host input validation/injection controller and viewer input reducer passed 18 tests, including HID mapping, negative-origin pointer math, release-on-state-change, and the local Ctrl+Alt+Shift+Escape chord. No real input was injected.
+- [UNVERIFIED] M7 decoder, ViewerRuntime, network integration, NV12 renderer path, cursor overlay, real app mode, and host integration are not present. M6 and M7 remain partial regardless of the isolated input results.
+- [HUMAN-PENDING] M4b visual review, M5 capture, M6 service/security checks, and M7 two-PC/network/latency/input checks remain recorded in `blocked.md` and `docs/HARDWARE.md`.
+
+### 2026-10-07 — M6 service/helper and M8 host-side audit
+
+- [TESTED-FAKE] Host-agent tests passed: 26 passed, 0 failed. This includes the bounded SCM supervisor policy, service stop-event argument validation, session-change translation, host clipboard round-trip/echo/sequence/size behavior, authenticated control authorization, and fake frame dispatch.
+- [COMPILE-ONLY] cargo fmt -p racc-host-agent -- --check, cargo clippy --offline -p racc-host-agent --all-targets -- -D warnings, and cargo check --offline -p racc-host-agent --target x86_64-pc-windows-msvc passed. No service command, helper, capture, or real clipboard operation was run.
+- [COMPILE-ONLY] Windows service code enters the SCM dispatcher, watches bounded stop/session events, launches the active-console helper with WTS user-token APIs on WinSta0\Default, and stops a helper after a five-second grace period. It remains unverified at runtime; it cannot capture the Winlogon secure desktop.
+- [COMPILE-ONLY] The foreground host connects Tailscale-only control authorization, DXGI capture, Media Foundation/OpenH264 H.264 encoding, paced UDP, the five-second control-disconnect lifecycle, Windows host clipboard adapters, and one-second StatsReport sends. StatsReport values have no live sample measurement. Host CPU comes from machine-wide GetSystemTimes; actual bitrate counts successful project UDP datagram bytes and excludes UDP/IP overhead.
+- [TESTED-FAKE] Host clipboard policy has fake two-way round-trip, echo, size, retry, and sequence-wrap tests. The Windows listener/writer and viewer-to-host integration have not been exercised against a real OS clipboard.
+- [HUMAN-PENDING] M6 service install/lifecycle, two-PC Tailscale streaming, resource readings, M8 real clipboard, and telemetry-vs-live measurements are listed in docs/HARDWARE.md. The M6 end-to-end checklist is blocked until a probe/host-loopback or verified viewer exists. App local IPC, approval UI, viewer clipboard OS adapter, and remote clipboard-disable signaling remain absent.
+- [UNVERIFIED] The Windows Graphics Capture fallback and the required connection-attempts-per-minute limit are not implemented. The latter's unspecified threshold is recorded in docs/OPEN_QUESTIONS.md.
+
+### 2026-10-07 — M9 macOS capture closeout
+
+- [COMPILE-ONLY] Added a macOS-gated ScreenCaptureKit primary capture path with CGDisplayStream fallback, read-only Screen Recording preflight and typed permission failure, 420v NV12 output at fixed 30 fps, 720p30 default / 1080p30 ceiling, cursor included, and retained `CVPixelBuffer` frame handoff. The native Mac frame type remains separate from Windows D3D `GpuFrame`.
+- [TESTED-FAKE] `cargo test --offline -p racc-capture` passed 16 tests on Windows, including the fake macOS lifecycle controller for start, migration/reconfiguration, access loss, recovery, and removal.
+- [COMPILE-ONLY] `cargo check` passed for macOS capture, decode, and input crates; strict target Clippy passed for capture and input. Capture strict Clippy included all targets. `cargo metadata --offline --no-deps --format-version 1` passed, and the Windows capture dependency tree contains no objc2-family crates.
+- [COMPILE-ONLY LIMIT] The macOS encoder target check could not finish because OpenH264's build script could not find the required target C++ compiler (`c++`). Strict decode Clippy currently fails on two `manual_is_multiple_of` warnings at `crates/decode/src/macos.rs:480-481`.
+- [UNVERIFIED] No Apple linker or Mac runtime was used; ScreenCaptureKit/CGDisplayStream operation, permissions, NV12 behavior, fallback availability, VideoToolbox results, input, and performance remain unverified. The owner-reported model/OS in `docs/HARDWARE.md` is not confirmed on-device.
+- [UNVERIFIED] M9 integration remains open: Mac capture is not wired to a host worker/VideoToolbox encoder; VideoToolbox decoder is not wired to a Mac wgpu viewer; permission UI, local input capture/session injection, NSPasteboard adapter, and a functional macOS host-agent/Unix IPC path are absent. Automatic topology watching/restart is also not implemented. The M10 `.app` build script exists but has not run on Mac.
+- [HUMAN-PENDING] Mac runtime checks and required future integration tests are listed under M9 in `docs/HARDWARE.md`. Keep the Mac host default at 720p30 until sustained hardware testing supports a higher tier.
+- M9 is **PARTIAL — COMPILE-ONLY / TESTED-FAKE**, not complete.
+
+### 2026-10-07 — M7 host input worker integration
+
+- [TESTED-FAKE] The foreground helper now routes authenticated InputEvent messages to a dedicated bounded input worker. The worker validates the authenticated connection, current reset epoch, selected display, and the latest topology announced by HostRuntime before mapping or injecting input. Queue saturation invalidates stale queued movement and still signals release of held keys/buttons without blocking the control callback.
+- [TESTED-FAKE] Host-agent tests passed: 29 passed, 0 failed. Fake-injector coverage includes valid input, wrong connection, stale epoch, wrong display, release on deactivation and shutdown, reauthorization after reset, and queue saturation while injection is blocked.
+- [COMPILE-ONLY] cargo fmt -p racc-host-agent -- --check, strict host-agent Clippy, and cargo check --offline -p racc-host-agent --target x86_64-pc-windows-msvc passed. No host command, helper, service, real capture, or OS input injection was run.
+- [HUMAN-PENDING] Release is wired for connection replacement/close, stream reset or topology announcement, capture/encoder pause or rebuild, session end, and helper shutdown. The helper currently uses the last topology announced by HostRuntime; no live topology-change event source is connected. Real pointer mapping, keyboard layouts, viewer-to-host sessions, and release behavior still require hardware checks. M7 end-to-end acceptance remains incomplete.
+
+### 2026-10-07 — M9 cursor separation correction
+
+- [COMPILE-ONLY] Both ScreenCaptureKit and CGDisplayStream now use an explicit false cursor-in-video setting. The macOS host reports that cursor pixels are excluded and sends its hidden-cursor update, so the remote pointer remains unavailable instead of being embedded in the video.
+- [COMPILE-ONLY] `cargo check --offline -p racc-capture --target x86_64-apple-darwin` passed; `cargo clippy --offline -p racc-capture --all-targets --target x86_64-apple-darwin -- -D warnings` passed. `cargo test --offline -p racc-capture --quiet` passed 16 tests on Windows; these do not exercise Apple frameworks.
+- [UNVERIFIED] This implementation does not extract a real macOS cursor bitmap, hotspot, and position from the capture path. No generic cursor was fabricated. The supported metadata source remains an open M9 implementation question; the Mac capture exclusion behavior is still HUMAN-PENDING on hardware.
+- [VERIFIED-REVIEW] Superseded the cursor-in-video ADR with ADR 0040, corrected `docs/CAPTURE.md`, `docs/VIEWER.md`, `docs/MACOS.md` and the M9 hardware checklist. M9 remains partial.
+
+### 2026-10-07 — M10 native window lifecycle
+
+- [COMPILE-ONLY] Added current work-area enumeration for Windows (`MONITORINFO.rcWork`, scaled with per-monitor effective DPI) and macOS (`NSScreen.visibleFrame`) and validate persisted geometry before the first window opens. The no-monitor fallback resets position to the origin and caps saved dimensions at 1280×800.
+- [COMPILE-ONLY] Close now hides the native Windows or AppKit window after tray initialization. Tray Open and second-instance handoff show and focus it. If tray initialization or native visibility fails, the app falls back to minimize/restore, and the app's visibility event pauses viewer decoding.
+- [TESTED-FAKE] `cargo test --offline -p racc-app` passed 73 tests, including geometry validation and fallback, tray menu, and second-instance handoff. `cargo clippy --offline -p racc-app --all-targets -- -D warnings` passed on Windows. `cargo check --offline -p racc-app` and `cargo check --offline --target x86_64-apple-darwin -p racc-app` passed. Mac strict Clippy is blocked by two `unused_mut` diagnostics in `crates/app/src/live.rs` (lines 146 and 345), outside this lifecycle adapter.
+- [HUMAN-PENDING] Native tray/window behavior and geometry restoration still need observation on Windows and the Mac, including display changes and second-instance activation. No app window or installer was launched for this check.
+
+
+### 2026-10-07 — M8/M9 integration and M10 release verification
+
+- [VERIFIED-RUN] The owner authorized text clipboard sync only while enabled for a session and only with the selected Tailscale peer. The Windows real-OS integration test against a fake remote passed; it wrote two fixed harmless strings and left the known test value on the clipboard. It did not connect to another machine. Workspace clipboard policy tests passed.
+- [COMPILE-ONLY] Added NSPasteboard text adapters for viewer and authenticated foreground host, gated by the enabled session. `cargo check --offline --tests -p racc-app --target x86_64-apple-darwin`, strict macOS app Clippy, and the Apple-target `racc-clipboard` check passed. The full macOS host target check stops in OpenH264 before compiling host Rust because target `c++` is unavailable.
+- [COMPILE-ONLY] The macOS Settings panel now separately checks Screen Recording and Accessibility and provides explicit buttons to fixed Settings URLs. The URL-routing test and Windows/macOS app Clippy/checks passed; Monterey runtime behavior is HUMAN-PENDING.
+- [TESTED-FAKE] Added a per-peer host connection-attempt limit of 20 per rolling minute with a 4,096-peer state cap. `cargo test --offline -p racc-host-agent` passed 39 tests; strict host-agent Clippy and the Windows target check passed.
+- [VERIFIED-RUN] `scripts/build-release.ps1 -DryRun` passed after dependency changes settled. The default Windows release build measured app 13,117,952 B, host-agent 1,885,696 B, ZIP 5,700,501 B. Compared thin LTO, one codegen unit, symbol stripping, and unwind panic handling: app 12,058,624 B (8.08% smaller), host-agent 1,701,376 B (9.77% smaller), combined executable bytes 8.29% smaller. Clean profile build took 3m59s versus 2m20s default. Selected the smaller profile and retained unwind for the service FFI panic boundary; see ADR 0032.
+- [VERIFIED-RUN — SUPERSEDED BY FINAL SOURCE REBUILD BELOW] Earlier Windows portable ZIP: 5,464,008 bytes, SHA-256 `5b2131213003545b13de172b86078558d1678ef4b2a9d5f8d12a1062d71192cf`; app 12,058,624 B; host-agent 1,701,376 B. It was not installed or run.
+- [VERIFIED-RUN] `cargo fmt --all -- --check`, strict workspace Clippy, and workspace tests passed. The core loopback test's 3-second hot-spin deadline flaked twice under workspace checks; it now sleeps 1 ms between polls and has a 10-second deadline. The isolated test and a complete `check-all.ps1` run passed format, Clippy, workspace tests, layering, and feature gates. `check-all.ps1` then exited 1 only at cargo-deny because the unchanged policy excludes required OpenH264 BSD-2-Clause. One release benchmark is ignored; the real Windows clipboard test was separately run and passed.
+- [HUMAN-PENDING] Real Windows/Mac host-viewer sessions, native tray and permission link behavior, real Tailscale route/telemetry measurements, private idle memory, clean install/uninstall, Mac bundle and signing, and the 24-hour soak remain unverified. M11a remains ordered after full M8/M10 acceptance. The normal Codex sandboxed shell still fails before startup; repository commands used the working approved elevated route.
+
+### 2026-10-07 — Final integrated M3b/M7–M10 audit
+
+- [VERIFIED-RUN] `cargo fmt --all -- --check` passed. `cargo clippy --offline --workspace --all-targets -- -D warnings` passed. `cargo test --offline --workspace` passed all crates; session has 100 passing tests, testkit 29, topology 28, and the app has 87 passing plus one intentionally ignored clipboard test (the separately authorized fixed-string OS clipboard run is recorded above). The two long simulated testkit soak cases each completed successfully.
+- [VERIFIED-RUN] `scripts/check-layering.ps1`, `scripts/check-features.ps1`, and `cargo check --offline --workspace --target x86_64-pc-windows-msvc` passed. `scripts/check-all.ps1` passed format, Clippy, workspace tests, layering and feature gates, then exited 1 at cargo-deny because required `openh264` and `openh264-sys2` BSD-2-Clause licenses are excluded by the preserved allowlist. Duplicate-version and unmaintained-crate notices are warnings.
+- [COMPILE-ONLY] `cargo clippy --offline -p racc-app --all-targets --target x86_64-apple-darwin -- -D warnings`, Apple-target checks for capture/decode/input/clipboard including tests, and strict Clippy for capture/input/clipboard passed. Full `cargo check -p racc-host-agent --target x86_64-apple-darwin` stops in `openh264-sys2` before host-agent compilation because target `c++` is unavailable.
+- [TESTED-FAKE / COMPILE-ONLY] Mac CPU sampling now uses aggregate Mach host ticks, reports unknown until a valid delta, and has three deterministic fake-counter tests plus an isolated Apple-target check. Mac app and host Unix-socket IPC enforce same-user checks in source. ADR 0042 selects pointer-in-video for Mac; Windows keeps separate cursor metadata.
+- [VERIFIED-REVIEW] Updated `docs/MACOS.md`, `docs/HARDWARE.md`, and `blocked.md` to remove obsolete claims that the Mac CPU sampler and local IPC are missing. No screen was launched or captured for this audit.
+- [HUMAN-PENDING] M4b owner visual review, M5/M6 real Windows capture/service checks, M7 cross-machine viewer/input, M8 peer clipboard/live telemetry, M9 real Mac runtime, and M10 installer/Mac bundle/native behavior/24-hour soak remain pending. M11a stays behind its explicit M8/M10 preflight. The normal PowerShell launcher still requires Codex restart to load its already-saved fallback.
+- [VERIFIED-RUN] Rebuilt the final Windows portable artifact after UI and host-control changes: app 12,371,456 B, host-agent 1,876,480 B, ZIP 5,644,455 B, SHA-256 `d8e42189f915329413cc17540be5850762427f4f200a717b5d0a31fdc6e2900e`. `Get-FileHash` independently matched the generated checksum file. The archive was built only; no installation or release runtime was performed.
+- [TESTED-FAKE / COMPILE-ONLY] M6 shutdown now drains active remote control handlers and waits for disconnect callbacks before server stop returns. Safe hosting enable/disable remains unavailable until the platform owner loop can stop and reconstruct runtime resources and rebind the listener.
+- [VERIFIED-REVIEW] M4b source polish adds a contextual first-frame state card and separates empty canvas, fake-pattern, and NV12 rendering. No app window or screenshot was used; visual fit and glyph rendering remain owner-review items.
+- [VERIFIED-RUN] After these final source changes, Windows workspace target check, Apple-target app strict Clippy, 13-library layering check, and release feature-gate check all passed. A final normal sandboxed PowerShell retry still failed before startup with `helper_unknown_error: setup refresh had errors`; the approved elevated route was used.
+- [VERIFIED-RUN] Final portable artifact sizes and SHA-256 are recorded in docs/HARDWARE.md; the archive was independently checked and was not installed.
+
+
+### 2026-10-07 — Cross-platform local setup scripts
+
+- [UNVERIFIED] Added root setup-windows.ps1 and setup-macos.sh with SETUP.md. Windows provisions build tools through winget, builds the existing release/installer flows, installs the app, service, scoped firewall rules and sign-in startup. macOS installs the pinned Intel Rust toolchain, builds the app bundle, places it in the current user's Applications folder, and installs the existing user LaunchAgents. Neither script installs or modifies Tailscale.
+- [HUMAN-PENDING] The Mac script cannot grant Screen Recording or Accessibility permissions. The setup scripts have not been executed on any of the three machines; shell startup in this environment still fails with the setup refresh error. A successful script run will not resolve the known unavailable Hosting toggle or prove streaming.

@@ -6,9 +6,40 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+/// Tailscale peer discovery integration for core consumers.
+pub mod discovery;
+pub mod host_runtime;
+pub mod ipc;
+pub mod viewer_pipeline;
+pub mod viewer_runtime;
+
+pub use viewer_pipeline::{
+    DecodeBatchStats, ViewerFramePipeline, ViewerPipelineError, ViewerQueueOutcome,
+};
+pub use viewer_runtime::{
+    ClipboardMetadata, ClipboardPortAction, ClipboardTransferDirection, ClipboardTransferStatus,
+    ViewerCommand, ViewerRuntime, ViewerRuntimeConfig, ViewerRuntimeError, ViewerRuntimeEvent,
+    VIEWER_RUNTIME_EVENT_CAPACITY,
+};
+
+pub use discovery::{CoreDeviceDiscovery, DeviceDiscoveryUpdate, DiscoveredPeer};
+
+pub use host_runtime::{
+    is_tailscale_address, HostConnectionId, HostPeerAuthorization, HostQualityTier, HostRuntime,
+    HostRuntimeCounters, HostRuntimeError, HostRuntimeEvent, HostRuntimePhase, HostRuntimeStatus,
+    HostSenderObservation, PendingHostAuthorization, MAX_HOST_ENCODER_LAG_MS,
+    MAX_HOST_PEER_KEY_BYTES, MAX_HOST_PEER_LABEL_BYTES, MAX_PENDING_HOST_AUTHORIZATIONS,
+};
+pub use racc_identity::DEFAULT_CONTROL_PORT;
+
 use std::fmt;
 use std::sync::Arc;
 
+pub use ipc::{
+    AllowlistEntry, HelperState, HostStatus, IpcClient, IpcError, IpcEvent, IpcFailureCode,
+    IpcRequest, IpcRequestHandler, IpcResponse, IpcServerMessage, IpcTransport, PeerAction,
+    PendingPeer, MAX_IPC_FRAME_BYTES, MAX_IPC_TEXT_BYTES, MAX_PEER_LIST_ENTRIES,
+};
 use racc_proto::OsType;
 use racc_telemetry::TelemetrySnapshot;
 pub use racc_topology::{DisplayId, Topology};
@@ -113,6 +144,10 @@ pub struct CoreSnapshot {
     pub hosting_enabled: bool,
     /// Whether the viewer window is visible and should decode video.
     pub visible: bool,
+    /// Whether the active session permits clipboard synchronization.
+    pub clipboard_session_active: bool,
+    /// Whether the user enabled bidirectional text clipboard synchronization.
+    pub clipboard_sync_enabled: bool,
     /// Current session and host telemetry.
     pub telemetry: TelemetrySnapshot,
 }
@@ -126,6 +161,8 @@ impl Default for CoreSnapshot {
             local_device_name: String::new(),
             hosting_enabled: false,
             visible: true,
+            clipboard_session_active: false,
+            clipboard_sync_enabled: false,
             telemetry: TelemetrySnapshot::default(),
         }
     }
@@ -173,6 +210,8 @@ pub enum UiCommand {
     ToggleKeyboardCapture(bool),
     /// Enable or release mouse capture.
     ToggleMouseCapture(bool),
+    /// Enable or disable text clipboard synchronization for the active session.
+    SetClipboardEnabled(bool),
     /// Disconnect from the selected peer.
     Disconnect,
     /// Connect to a known peer.
@@ -199,6 +238,13 @@ pub enum CoreEvent {
     DeviceOffline {
         /// Peer that became unreachable.
         device_id: DeviceId,
+    },
+    /// A bounded Tailscale device-list refresh completed successfully.
+    DeviceDiscoveryCompleted {
+        /// Number of peers included in the refreshed device catalogue.
+        peer_count: usize,
+        /// Local machine name reported by Tailscale, if available.
+        local_device_name: Option<String>,
     },
     /// A peer's display list or topology revision changed.
     TopologyChanged {
@@ -423,6 +469,11 @@ pub struct VideoFrame {
     pub height: u16,
     /// Frame rate supplied by the stream.
     pub fps: u8,
+    /// Host monotonic capture timestamp carried by the video datagrams, wrapping at u32.
+    /// This timestamp cannot be compared with the viewer clock without a clock-offset estimate.
+    pub capture_ts_us: Option<u32>,
+    /// Time spent inside the viewer decoder call, in viewer-local microseconds.
+    pub decode_duration_us: Option<u64>,
     /// Frame pixels or synthetic test-pattern parameters.
     pub payload: FramePayload,
 }
@@ -530,6 +581,8 @@ mod tests {
             width: 1280,
             height: 720,
             fps: 30,
+            capture_ts_us: None,
+            decode_duration_us: None,
             payload: FramePayload::SyntheticPattern {
                 seed: 7,
                 frame_number: 9,
@@ -571,6 +624,8 @@ mod tests {
             width: 4,
             height: 4,
             fps: 30,
+            capture_ts_us: None,
+            decode_duration_us: None,
             payload: FramePayload::Nv12(Nv12Frame {
                 y: Arc::from(vec![0; 16]),
                 uv: Arc::from(vec![128; 8]),
@@ -601,6 +656,8 @@ mod tests {
             width: 4,
             height: 4,
             fps: 30,
+            capture_ts_us: None,
+            decode_duration_us: None,
             payload: FramePayload::Nv12(Nv12Frame {
                 y: Arc::from(vec![0; 16]),
                 uv: Arc::from(vec![128; 8]),

@@ -3,3 +3,28 @@ name = "racc-encode"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
+
+[dependencies]
+openh264 = { version = "0.9.8", default-features = false, features = ["source"] }
+racc-capture = { path = "../capture" }
+racc-topology = { path = "../topology" }
+
+[target.'cfg(windows)'.dependencies]
+windows-core = "0.58.0" # The implement macro emits a direct windows_core path.
+windows = { version = "0.58.0", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Media_MediaFoundation",
+    "Win32_System_Com",
+    "Win32_System_Variant",
+    "implement",
+] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["CFArray", "CFDictionary", "CFNumber", "CFString", "std"] }
+objc2-core-media = { version = "0.3.2", default-features = false, features = ["CMBase", "CMBlockBuffer", "CMFormatDescription", "CMSampleBuffer", "CMTime"] }
+objc2-core-video = { version = "0.3.2", default-features = false, features = ["CVBase", "CVBuffer", "CVImageBuffer", "CVPixelBuffer"] }
+objc2-video-toolbox = { version = "0.3.2", default-features = false, features = ["VTBase", "VTCompressionProperties", "VTCompressionSession", "VTErrors", "VTSession", "objc2", "objc2-core-media", "objc2-core-video"] }

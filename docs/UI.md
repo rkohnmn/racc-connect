@@ -1,6 +1,6 @@
 # M4b UI shell
 
-This document describes the fake-data desktop shell in crates/app, its metadata boundary with racc-core, and current verification limits. The implementation uses iced 0.14.0 with its native wgpu renderer. M4b has no real network, capture, decode, or Tailscale integration.
+This document describes the native desktop shell in crates/app, its metadata boundary with racc-core, and current verification limits. The implementation uses iced 0.14.0 with its native wgpu renderer. The app has both a deterministic fake-data mode and a discovery-first live viewer path; the live path is source-integrated but still needs cross-machine hardware verification.
 
 ## Layout and interaction
 
@@ -9,11 +9,11 @@ The app has four regions:
 | Region | Width | Contents |
 |---|---:|---|
 | Device rail | 72 logical px | Home, online/offline device entries, discovery entry, and Session navigation |
-| Device sidebar | 240 px open / 48 px collapsed | Selected peer, display list, control and system actions, and local session controls (compact icon rail when collapsed) |
+| Device sidebar | 264 px open / 48 px collapsed | Selected peer, display list, control and system actions, and local session controls (compact icon rail when collapsed) |
 | Session workspace | Flexible, at least 360 px | Strong session header and status, display strip, framed letterboxed wgpu surface, and a persistent compact control dock |
-| Telemetry sidebar | 280 px open / 48 px collapsed | Session and host stats, recent event log, and collapse control |
+| Telemetry sidebar | 300 px open / 48 px collapsed | Session and host stats, recent event log, and collapse control |
 
-The window starts at 1440 × 900 logical pixels, with a 1050 × 640 minimum. Region sizing and letterbox geometry are pure functions in crates/app/src/design.rs. Its tokens module defines the 72/240/280 px open widths, 48 px collapsed sidebars and device tiles, 360 px minimum workspace, 1050 × 640 minimum window, 4/8/12/16 px spacing, 6/8/10 px corner radii, 1 px borders, 2 px focus rings, 14 px body text, 12 px metadata and section labels, 20 px metric values, and 22 px workspace titles. It also centralizes the dark rail, secondary sidebar, main panel, raised card, selected row, primary/muted text, blue-purple accent, online/offline, and border colors. Device and telemetry sidebars can be collapsed and use custom scrollbar colors. Home lists known fake devices; its Connect buttons issue the dedicated Connect command. Settings provides hosting, allowlist, and default-quality controls. The local panel presents independent keyboard and pointer capture controls, a hosting/viewer status chip, a visibly disabled audio placeholder, and settings. When the device sidebar is collapsed, compact original glyph buttons retain tooltips. Audio remains a disabled “not supported” placeholder.
+The window starts at 1440 × 900 logical pixels, with a 1050 × 640 minimum. Region sizing and letterbox geometry are pure functions in crates/app/src/design.rs. Its tokens module defines the 72/264/300 px region widths, 48 px collapsed sidebars, and 40 px device tiles, 360 px minimum workspace, 1050 × 640 minimum window, 4/8/12/16 px spacing, 6/8/10 px corner radii, 1 px borders, 2 px focus rings, 14 px body text, 12 px metadata and section labels, 20 px metric values, and 22 px workspace titles. It also centralizes the dark rail, secondary sidebar, main panel, raised card, selected row, primary/muted text, blue-purple accent, online/offline, and border colors. Device and telemetry sidebars can be collapsed and use custom scrollbar colors. Home lists known fake devices; its Connect buttons issue the dedicated Connect command. Settings provides hosting, allowlist, and default-quality controls. The local panel presents independent keyboard and pointer capture controls, a hosting/viewer status chip, a visibly disabled audio placeholder, and settings. When the device sidebar is collapsed, compact original glyph buttons retain tooltips. Audio remains a disabled “not supported” placeholder.
 
 Action buttons use quiet unselected rows, visible hover and pressed fills, accent borders for selected items, and a focus ring. The device rail uses name initials and online dots rather than branded artwork. Offline or non-host-capable devices cannot be selected for streaming. Other overlays cover connecting, switching, paused, reconnecting, approval, and error states.
 
@@ -48,18 +48,19 @@ The custom focus wrapper adds focus traversal, activation, and a visible accent 
 
 crates/app/src/view_model.rs is the toolkit-independent reducer. ViewModel::reduce_action changes local UI state and returns racc_core::UiCommands; ViewModel::apply_event applies metadata CoreEvents from the core. Widgets render the resulting state and translate interactions into UserActions. The app polls events and a CoreSnapshot on its 250 ms telemetry timer.
 
-CoreHandle, UiCommand, CoreEvent, and CoreSnapshot carry commands and metadata only. The core crate contains no iced types. Video pixels and frame metadata do not travel through the UI event bus: the renderer reads the latest frame directly from the separate FrameSource handoff. A producer publishes through FrameSink, replacing stale frames instead of growing a queue. The current fake source emits renderer-generated pattern metadata; the shader draws the synthetic animation in iced's native wgpu render context. This is not a real decoder or an NV12 upload test.
+CoreHandle, UiCommand, CoreEvent, and CoreSnapshot carry commands and metadata only. The core crate contains no iced types. Video pixels and frame metadata do not travel through the UI event bus: the renderer reads the latest frame directly from the separate FrameSource handoff. A producer publishes through FrameSink, replacing stale frames instead of growing a queue. Fake mode draws a renderer-generated pattern in iced's native wgpu context. The live viewer publishes bounded NV12 planes through the same separate handoff; the shader uploads Y and UV planes to persistent textures and converts limited-range BT.709 to RGB. Live color and hardware pacing have not been visually verified.
 
 The four shell regions use iced's `lazy` widget with independent cache keys. A telemetry-only change rebuilds the telemetry sidebar content; the device rail and device sidebar keys remain stable. The workspace key includes the live RTT shown in its subtitle, so a changed RTT rebuilds that region. A unit test verifies these dependency boundaries. Iced still calls the root view, lays out the window, and redraws the full window after an update; this cache avoids rebuilding and diffing every child subtree, not full-window rendering work.
 
 ## Fake scenario
 
-Run with --fake to use the deterministic racc-testkit::FakeCore scenario (the app refuses normal launch in this milestone). It contains three peers: an online Windows host with three displays, an offline Windows peer, and an online Mac peer that is initially not host-capable. The fake Mac peer can produce the authorization prompt and becomes host-capable after approval.
+Normal launch uses the discovery-first live viewer path. Run with --fake to use the deterministic racc-testkit::FakeCore scenario. It contains three peers: an online Windows host with three displays, an offline Windows peer, and an online Mac peer that is initially not host-capable. The fake Mac peer can produce the authorization prompt and becomes host-capable after approval.
 
 The active Windows display starts with an animated 30 fps pattern. Its metadata changes with the displayed monitor and quality selection. Fake telemetry varies over time and retains scripted display-switch, decoder-reset, quality-adjustment, and packet-loss events. Display switching holds the prior frame for 150 ms, then keeps it until the matching StreamReset and DecoderReady events are polled; the fake source publishes the replacement frame at that point. The UI processes those metadata events together before rendering its next frame. The seed is fixed in the app; FakeCore also supports explicit seeds for deterministic tests.
 
 ## Running and measurement controls
 
+    cargo run -p racc-app
     cargo run -p racc-app -- --fake
     cargo run -p racc-app -- --fake --telemetry-collapsed
     cargo run -p racc-app -- --fake --measure-secs=60
@@ -68,7 +69,7 @@ The active Windows display starts with an animated 30 fps pattern. Its metadata 
 
 --measure-secs=N prints interval statistics and exits after the measurement duration. --telemetry-collapsed starts with that sidebar collapsed. --fake-idle disables synthetic frame advancement and frame sampling while leaving the app window and telemetry updates active; it is a measurement path, not the normal session view.
 
-The app samples when the observed latest FrameSource frame ID changes, timestamps observations with a CPU monotonic clock, and computes median, p95, and count above 40 ms. This is a source-update cadence proxy: it does not measure GPU completion, monitor refresh, or physical presentation. The Release app was run visibly on Windows 10.0.19045 with a five-second process warm-up. Process CPU used the `TotalProcessorTime` delta divided by sampled wall time; private bytes were sampled about once per second. Frame cadence uses the app's own 60-second `--measure-secs` window.
+Fake mode samples when the observed latest FrameSource frame ID changes, timestamps observations with a CPU monotonic clock, and computes median, p95, and count above 40 ms. This is a source-update cadence proxy: it does not measure GPU completion, monitor refresh, or physical presentation. The Release app was run visibly on Windows 10.0.19045 with a five-second process warm-up. Process CPU used the `TotalProcessorTime` delta divided by sampled wall time; private bytes were sampled about once per second. Frame cadence uses the app's own 60-second `--measure-secs` window.
 
 ### Release measurements
 
@@ -87,14 +88,21 @@ M4b's post-cache open-sidebar p95 is 34.97 ms and its >40 ms count is 16 in 60 s
 
 ## Known limitations
 
-- --fake is the only implemented launch mode. Networking, capture, decode, real input forwarding, and native tray behavior are outside this milestone.
-- The shader displays a synthetic test pattern; M4b does not validate the final decoder-to-renderer path or real NV12 uploads.
+- Normal launch starts Tailscale discovery and the live viewer adapter; `--fake` retains the deterministic test scenario. The live path is source-integrated but has not completed a remote host session on hardware.
+- The Windows live viewer uses the Media Foundation decoder factory and the macOS app build selects VideoToolbox. The Windows decoder currently returns CPU NV12 planes; hardware DXVA texture interop is not implemented. The renderer uploads the planes to wgpu, and real decode, capture, color and presentation remain unverified.
+- Input capture/release and host injection have bounded source paths and fake tests, but two-PC interaction and pointer accuracy remain HUMAN-PENDING. Peer approval UI and Windows/macOS app-to-host IPC are source-integrated; the Windows helper currently returns Unavailable for hosting enable/disable, and neither IPC runtime has been exercised on its target OS.
+- Text clipboard read/write is source-integrated on the Windows and macOS viewer/host paths and gated by the active-session opt-in. Real peer-to-peer transfers and macOS runtime behavior remain HUMAN-PENDING.
+- Native tray menus, close-to-tray/restore, second-instance activation, settings persistence, and autostart controls are source-integrated. Their platform runtime and autostart behavior remain HUMAN-PENDING. Hosting control remains unavailable in the Windows helper.
 - The Release measurements above are frame-source update and process-resource proxies, not physical present or GPU completion measurements.
 - The custom controls support keyboard focus traversal and visible focus indication, but explicit screen-reader names/roles are absent and iced 0.14's accessible-name coverage has not been audited.
-- The no-op tray controller defines the boundary only. A real tray icon and hide-to-tray integration are later packaging work.
+
 
 
 
 ## Visual hierarchy refresh — 2026-10-07
 
-The session page now leads with a named remote session and a live status chip, keeps the display choices in a compact strip, gives the native wgpu video a near-black framed canvas, and anchors quality and capture controls in a bottom dock. Telemetry is grouped into prominent RTT/loss/bitrate/FPS metrics, host details, and event cards. Home device cards show readiness and display counts; the device and local-session rails use consistent glyphs, online states, and selected-state treatment. These changes use only the existing dark and blue-purple design system. The attached image informed information hierarchy and spacing only; its logo, illustrations, voice controls, names, and assets were not copied. The owner cannot inspect screens now, so final visual sign-off is HUMAN-PENDING in blocked.md.
+The session page leads with a named remote session and live state, keeps display choices in a compact strip, frames the native wgpu surface in a near-black canvas, and anchors quality and capture actions in a bottom dock. Telemetry groups connection metrics, host details, and recent events. Home device cards emphasize readiness and display count; the left rail and local-session panel use a consistent, original glyph treatment. The attached image informed information hierarchy and spacing only; its logo, illustrations, names, and assets were not copied.
+
+The token palette now has a deliberate depth order: graphite rail, dark workspace, lighter device/telemetry sidebars, raised surfaces, cards, hover fill, and a separate selected fill. The blue-purple accent has distinct foreground and active-fill roles so section labels, focus indicators, and pressed buttons stay legible. Nested panel borders are quieter so surface fills establish hierarchy without outlining every card equally. Status colors remain separate for ready, offline, and destructive actions. A design-token test verifies at least 7:1 contrast for primary, muted, and accent text across the main/sidebar/surface/card backgrounds and 4.5:1 for active and destructive button fills.
+
+Session badges derive from connection and stream metadata; the subtitle reports RTT as unavailable when no measurement exists. The owner cannot inspect screens now, so visual sign-off remains HUMAN-PENDING in `blocked.md` and the checklist in `docs/HARDWARE.md`.

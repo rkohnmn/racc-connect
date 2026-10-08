@@ -1,6 +1,6 @@
-# Racc Connect wire protocol v0
+# Racc Connect wire protocol v4
 
-Status: draft version 0. Integers are little-endian. The Rust reference implementation is **crates/proto** (package **racc-proto**).
+Status: draft version 4. Integers are little-endian. The Rust reference implementation is **crates/proto** (package **racc-proto**).
 
 ## Channels and session setup
 
@@ -9,7 +9,7 @@ Status: draft version 0. Integers are little-endian. The Rust reference implemen
 | Control | TCP, length-prefixed, TCP_NODELAY | Handshake, topology, stream control, input, clipboard, telemetry, cursor shapes, keepalive |
 | Video | UDP | H.264 Annex B fragments and cursor position/visibility |
 
-Session order: TCP connect to the host's Tailscale address; viewer sends **Hello** (1); host returns **HelloAck** (2); host sends **TopologyAnnounce** (3); host sends successful **StreamReset** (5); host starts UDP video. The host checks Tailscale LocalAPI whois and its allowlist before accepting. WireGuard provides peer authentication and encryption; there is no application-layer encryption.
+Session order: TCP connect to the host's Tailscale address; viewer sends **Hello** (1); host returns **HelloAck** (2); host sends **TopologyAnnounce** (3); host sends successful **StreamReset** (5); host starts UDP video. The host resolves the peer with Tailscale `whois` and checks its allowlist before accepting. WireGuard provides peer authentication and encryption; there is no application-layer encryption.
 
 Video datagrams contain no session ID. The host sends to the viewer Tailscale IP and UDP port announced in Hello.video_udp_port. The viewer accepts datagrams only from the host IP address of the associated TCP control connection.
 
@@ -17,13 +17,17 @@ Video datagrams contain no session ID. The host sends to the viewer Tailscale IP
 
 | Constant | Value | Meaning |
 |---|---:|---|
-| PROTOCOL_VERSION | 0 | Draft wire version |
+| PROTOCOL_VERSION | 4 | Draft wire version |
 | MAX_DATAGRAM | 1200 bytes | Maximum UDP datagram including header |
 | VIDEO_HEADER_LEN | 18 bytes | Video slice header |
 | MAX_VIDEO_PAYLOAD | 1182 bytes | Maximum video fragment payload |
 | MAX_FRAGMENTS_PER_FRAME | 1024 | Maximum fragments in a frame |
 | MAX_CONTROL_FRAME_BYTES | 1,048,576 bytes | Max TCP body after length prefix, including type byte |
 | MAX_CLIPBOARD_BYTES | 524,288 bytes | Maximum UTF-8 clipboard data |
+| CLIPBOARD_LOGICAL_CLOCK_VERSION | 1 | Clipboard logical-clock schema |
+| MAX_CLIPBOARD_LOGICAL_CLOCK | 9,223,372,036,854,775,807 | Maximum Lamport counter |
+| MAX_VIEWER_REPORT_DURATION_MS | 60,000 ms | Maximum RTT/decode duration |
+| MAX_VIEWER_REPORT_DROPPED_FRAMES | 1,000,000 | Maximum reported drops per interval |
 | MAX_DISPLAYS | 16 | Maximum display entries |
 | MAX_NAME_BYTES | 128 bytes | Maximum encoded UTF-8 name/version |
 | MAX_CURSOR_DIM | 128 pixels | Maximum cursor width or height |
@@ -50,7 +54,7 @@ Offsets are from the beginning of the datagram.
 | 14 | 4 | u32 | capture_ts_us, wrapping host capture time |
 | 18 | 1–1182 | bytes | H.264 Annex B access-unit fragment |
 
-Flags: bit 0 KEY, bit 1 LAST_FRAGMENT, bit 2 CONFIG (SPS/PPS present); bits 3–7 are reserved and must be zero. Fragment count is 1..=1024; index is less than count; LAST is set iff index equals count minus one. A frame of N bytes is split into ceil(N / 1182) fragments: every non-final payload has exactly 1182 bytes, and the final payload has 1–1182 bytes. The receiver places payloads at frag_idx × 1182 and enforces this uniform-size rule. Within one frame, KEY, CONFIG, capture_ts_us, and frag_cnt agree. A frame is at most 1,210,368 bytes. Payload is nonempty and total datagram length is at most 1200. v0 is an undeployed draft, so this clarification is made in place without a version bump. UDP datagrams preserve their boundaries and WireGuard authenticates them, so payload truncation in transit is not a threat-model concern; a shorter final payload cannot be distinguished from a structurally valid final fragment because no full-frame byte length is carried. Join fragments by increasing index. Parsing borrows payload bytes and allocates nothing.
+Flags: bit 0 KEY, bit 1 LAST_FRAGMENT, bit 2 CONFIG (SPS/PPS present); bits 3–7 are reserved and must be zero. Fragment count is 1..=1024; index is less than count; LAST is set iff index equals count minus one. A frame of N bytes is split into ceil(N / 1182) fragments: every non-final payload has exactly 1182 bytes, and the final payload has 1–1182 bytes. The receiver places payloads at frag_idx × 1182 and enforces this uniform-size rule. Within one frame, KEY, CONFIG, capture_ts_us, and frag_cnt agree. A frame is at most 1,210,368 bytes. Payload is nonempty and total datagram length is at most 1200. This layout is unchanged from wire version 1 and remains part of wire version 2. UDP datagrams preserve their boundaries and WireGuard authenticates them, so payload truncation in transit is not a threat-model concern; a shorter final payload cannot be distinguished from a structurally valid final fragment because no full-frame byte length is carried. Join fragments by increasing index. Parsing borrows payload bytes and allocates nothing.
 
 ### Cursor update, kind 2
 
@@ -68,7 +72,7 @@ Fixed size: 19 bytes.
 | 14 | 4 | i32 | y, host physical pixel relative to streamed display top-left |
 | 18 | 1 | u8 | visible, exactly 0 or 1 |
 
-Viewer applies the bitmap hotspot and scales the position. Cursor bitmap travels on TCP, never in UDP.
+The x/y coordinate is the host-side hotspot location in physical display pixels. The viewer subtracts the hotspot from the scaled position to place the bitmap’s top-left, and scales both cursor position and bitmap dimensions by the selected display-to-rendered-video ratio. Cursor bitmap travels on TCP, never in UDP.
 
 ## TCP framing
 
@@ -104,6 +108,9 @@ Payload offsets below start after the type byte. Strings are a one-byte length f
 | 14 | Pong | Either |
 | 15 | CursorShape | Host → viewer |
 | 16 | Goodbye | Either |
+| 17 | ViewerReport | Viewer → host |
+| 18 | ClipboardSyncControl | Viewer → host |
+| 19 | QualityAdjustment | Host → viewer |
 
 ### 1. Hello
 
@@ -190,7 +197,42 @@ Boolean fields are exactly 0 or 1. Key identity is USB HID usage page 0x07. Modi
 
 ### 11. ClipboardUpdate
 
-Offset 0 u32 seq; offset 4 u8 origin (0 viewer, 1 host); offset 5 u8 kind (1 UTF-8 text); offset 6 u32 byte_length (at most 524288); offset 10 text bytes. Other kinds and invalid UTF-8 are rejected.
+Payload offsets are fixed through the text length; bytes after offset 19 are UTF-8 text.
+
+| Offset | Size/type | Field |
+|---:|---|---|
+| 0 | 4 / u32 | seq, sender-local monotonic sequence |
+| 4 | 1 / u8 | origin: 0 Viewer, 1 Host |
+| 5 | 1 / u8 | logical_clock_version, exactly 1 |
+| 6 | 8 / u64 | logical_clock counter, 0..=9,223,372,036,854,775,807 |
+| 14 | 1 / u8 | encoding: 1 UTF-8 text |
+| 15 | 4 / u32 | byte_length, at most 524288 |
+| 19 | variable / bytes | UTF-8 text |
+
+Unknown clock versions, origins, encodings, oversized counters/text, and invalid UTF-8 are rejected. Clipboard conflict ordering uses the logical clock; the origin and sequence are available as deterministic tie-break inputs to the clipboard state machine. No clipboard content is included in telemetry.
+
+### 18. ClipboardSyncControl
+
+A viewer sends this one-byte session preference after handshake and whenever the user toggles text clipboard sync. `enabled` is exactly 0 or 1. The host starts reading/sending clipboard text only after `enabled=1`; `enabled=0` ends the host clipboard policy session and drops pending text and echo state. A disconnect also ends the session.
+
+| Offset | Size/type | Field |
+|---:|---|---|
+| 0 | 1 / u8 | enabled |
+
+### 19. QualityAdjustment
+
+The host reports each controller-selected bitrate or tier target change to the active viewer. A bitrate trim keeps the same height and epoch. A tier change is sent after the successful `StreamReset` for its new epoch. The viewer records only adjustments matching the active epoch.
+
+| Payload offset | Size/type | Field |
+|---:|---|---|
+| 0 | 2 / u16 | epoch |
+| 2 | 1 / u8 | reason: 0 Loss, 1 RttInflation, 2 QueueOverflow, 3 Stable, 4 Preference, 5 BitrateTrim |
+| 3 | 2 / u16 | from_height, exactly 480, 720, or 1080 |
+| 5 | 2 / u16 | to_height, exactly 480, 720, or 1080 |
+| 7 | 4 / u32 | from_bitrate_bps |
+| 11 | 4 / u32 | to_bitrate_bps |
+
+Both bitrate targets must be within 70–100% of their tier defaults (480p: 1.05–1.5 Mbps, 720p: 2.45–3.5 Mbps, 1080p: 4.9–7 Mbps). `BitrateTrim` requires equal heights; all other reasons require a tier change.
 
 ### 12. StatsReport
 
@@ -213,15 +255,37 @@ Both contain u64 nonce at offset 0 and a u64 timestamp at offset 8. Ping uses se
 
 ### 15. CursorShape
 
-Offset 0 u32 shape_id; 4 u16 width; 6 u16 height; 8 u16 hotspot_x; 10 u16 hotspot_y; 12 BGRA pixel bytes. Width and height are 1..=128; hotspots are less than their dimensions. No pixel length prefix is present: exact checked byte length is width × height × 4, at most 65536.
+| Offset | Size/type | Field |
+|---:|---|---|
+| 0 | 4 / u32 | shape_id |
+| 4 | 2 / u16 | width, 1..=128 |
+| 6 | 2 / u16 | height, 1..=128 |
+| 8 | 2 / u16 | hotspot_x, less than width |
+| 10 | 2 / u16 | hotspot_y, less than height |
+| 12 | 1 / u8 | blend_mode: 0 PremultipliedAlpha, 1 WindowsMaskedColor, 2 WindowsAndXor |
+| 13 | width × height × 4 / bytes | BGRA pixels |
+
+No pixel-length prefix is present. The exact checked byte length is width × height × 4, at most 65536 bytes. All channels are 8-bit. PremultipliedAlpha stores color channels already multiplied by alpha and composites as `src + dst × (1 − alpha)`. WindowsMaskedColor stores a mask in alpha: 0 replaces the video pixel with RGB; 255 XORs RGB with the video pixel. WindowsAndXor stores the AND mask in alpha (0 or 255) and the XOR mask in RGB; each output channel is `(video_channel AND and_mask) XOR xor_mask`. Unknown blend-mode values are rejected. The host must preserve these modes when converting capture shapes; it must not reinterpret masked or monochrome cursor data as ordinary alpha. Windows masked-color cursor behavior follows [DXGI_OUTDUPL_POINTER_SHAPE_TYPE](https://learn.microsoft.com/windows/win32/api/dxgi1_2/ne-dxgi1_2-dxgi_outdupl_pointer_shape_type).
 
 ### 16. Goodbye
 
 Offset 0 u8 reason: 0 Normal, 1 Error, 2 Superseded, 3 NotAuthorized, 4 Shutdown.
+### 17. ViewerReport
+
+Viewer-to-host feedback, sent approximately once per second while streaming.
+
+| Offset | Size/type | Field |
+|---:|---|---|
+| 0 | 2 / u16 | epoch |
+| 2 | 2 / u16 | loss_permille, 0..=1000 |
+| 4 | 2 / u16 | frame_loss_permille, 0..=1000 |
+| 6 | 4 / u32 | rtt_ms, 0..=60000 |
+| 10 | 4 / u32 | decode_ms_p95, 0..=60000 |
+| 14 | 4 / u32 | dropped_frames, 0..=1000000 in the reporting interval |
 
 ## Validation and errors
 
-Decoders reject truncated fields, oversized declared lengths, invalid closed enums, reserved mask bits, unknown types/kinds, unsupported datagram versions, invalid UTF-8, malformed booleans, inconsistent fragments, duplicate display IDs, zero display dimensions and trailing bytes. Length arithmetic is checked; length fields are validated before allocation.
+Decoders reject truncated fields, oversized declared lengths, invalid closed enums, reserved mask bits, unknown types/kinds, unsupported datagram versions, invalid UTF-8, malformed booleans, inconsistent fragments, duplicate display IDs, zero display dimensions, unsupported logical-clock versions, invalid logical-clock bounds, invalid ViewerReport ranges, and trailing bytes. Length arithmetic is checked; length fields are validated before allocation.
 
 The API uses ProtoError: Truncated, TooLarge, InvalidValue, UnknownKind, UnknownMessageType, UnsupportedVersion, InvalidUtf8, or TrailingBytes. ControlMessage::decode_body requires exact consumption. Each ControlPayload::decode_payload returns a value and bytes consumed.
 
@@ -231,22 +295,22 @@ Hex bytes below are asserted in crates/proto/tests/golden.rs.
 
 Video KEY|LAST_FRAGMENT|CONFIG, epoch 0x1234, frame 0x01020304, fragment 2 of 3:
 ~~~text
-00 01 07 00 34 12 04 03 02 01 02 00 03 00 0d 0c 0b 0a 00 00 00 01 65
+04 01 07 00 34 12 04 03 02 01 02 00 03 00 0d 0c 0b 0a 00 00 00 01 65
 ~~~
 
 Video middle fragment with KEY|CONFIG, fragment 1 of 3:
 ~~~text
-00 01 05 00 34 12 04 03 02 01 01 00 03 00 0d 0c 0b 0a 00 00 01 41
+04 01 05 00 34 12 04 03 02 01 01 00 03 00 0d 0c 0b 0a 00 00 01 41
 ~~~
 
 Cursor update, shape 0x11223344, x=-2, y=0x01020304, visible:
 ~~~text
-00 02 00 00 34 12 44 33 22 11 fe ff ff ff 04 03 02 01 01
+04 02 00 00 34 12 44 33 22 11 fe ff ff ff 04 03 02 01 01
 ~~~
 
 Hello frame and four-byte body-length prefix:
 ~~~text
-13 00 00 00 01 00 01 41 02 01 31 34 12 01 00 00 00 38 04 01 00 00 00
+13 00 00 00 01 02 01 41 02 01 31 34 12 01 00 00 00 38 04 01 00 00 00
 ~~~
 
 TopologyAnnounce with two displays, first x=-1920:
@@ -272,19 +336,34 @@ InputEvent frames: MouseMoveAbs, MouseMoveRel, MouseButton, Wheel and Key:
 
 ClipboardUpdate text “hi”:
 ~~~text
-0d 00 00 00 0b 07 00 00 00 00 01 02 00 00 00 68 69
+16 00 00 00 0b 07 00 00 00 00 01 09 00 00 00 00 00 00 00 01 02 00 00 00 68 69
 ~~~
 
-CursorShape with two BGRA pixels:
+ViewerReport epoch 0x1234, loss 12‰, frame loss 34‰, RTT 55 ms, decode p95 6 ms, 7 dropped frames:
 ~~~text
-15 00 00 00 0f 05 00 00 00 02 00 01 00 01 00 00 00 11 22 33 44 55 66 77 88
+13 00 00 00 11 34 12 0c 00 22 00 37 00 00 00 06 00 00 00 07 00 00 00
+~~~
+
+CursorShape v2 with two BGRA pixels and PremultipliedAlpha mode:
+~~~text
+16 00 00 00 0f 05 00 00 00 02 00 01 00 01 00 00 00 00 11 22 33 44 55 66 77 88
 ~~~
 
 ## Versioning and compatibility
 
-Any change to wire headers, type numbers, fields, enum values, limits or validation requires a PROTOCOL_VERSION bump and this file updated in the same commit. Unknown closed-enum values and reserved bits are not ignored. Version 0 is draft; no other compatibility is implied.
+Any change to wire headers, type numbers, fields, enum values, limits or validation requires a PROTOCOL_VERSION bump and this file updated in the same commit. Unknown closed-enum values and reserved bits are not ignored. Version 4 is incompatible with versions 0 through 3; both peers must advertise version 4.
 
-## Not in v0
+ClipboardSyncControl enabled: true (type 18):
+~~~text
+02 00 00 00 12 01
+~~~
+
+QualityAdjustment for a queue-pressure step from 720p at 3.5 Mbps to 480p at 1.5 Mbps:
+~~~text
+10 00 00 00 13 34 12 02 d0 02 e0 01 e0 67 35 00 60 e3 16 00
+~~~
+
+## Not in v4
 
 Forward error correction, NACK retransmission, audio, HEVC, AV1, clipboard images/files, Unicode text injection for international keyboard layouts, and application-layer encryption beyond Tailscale WireGuard.
 

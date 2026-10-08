@@ -1,0 +1,9 @@
+{
+  "Machine": {
+    "ID": "node-tagged",
+    "Name": "host-tagged",
+    "Addresses": ["203.0.113.40"],
+    "Tags": ["tag:host"]
+  },
+  "Capabilities": []
+}

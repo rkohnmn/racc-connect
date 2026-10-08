@@ -49,8 +49,14 @@ pub enum DecoderKind {
     /// Decoder has not been reported.
     #[default]
     Unknown,
-    /// Windows Media Foundation / DXVA decoder.
+    /// Generic Windows Media Foundation decoder reported by legacy adapters.
     MediaFoundation,
+    /// Media Foundation decoder selected from hardware-registered MFTs.
+    ///
+    /// This reports the selected transform category; it does not prove DXVA or GPU use.
+    MediaFoundationHardwareMft,
+    /// Synchronous Media Foundation MFT fallback.
+    MediaFoundationSynchronousMft,
     /// macOS VideoToolbox decoder.
     VideoToolbox,
     /// Software H.264 decoder.
@@ -66,6 +72,8 @@ impl DecoderKind {
             1 => Self::MediaFoundation,
             2 => Self::VideoToolbox,
             3 => Self::Software,
+            4 => Self::MediaFoundationHardwareMft,
+            5 => Self::MediaFoundationSynchronousMft,
             _ => Self::Unknown,
         }
     }
@@ -77,6 +85,8 @@ impl DecoderKind {
             Self::MediaFoundation => 1,
             Self::VideoToolbox => 2,
             Self::Software => 3,
+            Self::MediaFoundationHardwareMft => 4,
+            Self::MediaFoundationSynchronousMft => 5,
         }
     }
 }
@@ -347,11 +357,7 @@ impl TelemetryHub {
 
     /// Records one received or transmitted frame and whether it was lost.
     pub fn record_frame(&mut self, now_us: u64, lost: bool) -> bool {
-        let accepted = self.frame_rates.record(now_us, 1, u64::from(lost));
-        if accepted {
-            self.frame_loss_override = None;
-        }
-        accepted
+        self.frame_rates.record(now_us, 1, u64::from(lost))
     }
 
     /// Records payload bytes at an injected timestamp.
@@ -363,7 +369,6 @@ impl TelemetryHub {
     pub fn record_loss(&mut self, _now_us: u64, loss_fraction: f64, frame_loss_fraction: f64) {
         self.session.loss_fraction = finite_fraction(loss_fraction);
         self.session.frame_loss_fraction = finite_fraction(frame_loss_fraction);
-        self.frame_loss_override = Some(self.session.frame_loss_fraction);
         self.frame_loss_override = Some(self.session.frame_loss_fraction);
     }
 
@@ -382,6 +387,11 @@ impl TelemetryHub {
         self.session.codec = codec;
         self.session.decoder = decoder;
         self.session.epoch = epoch;
+    }
+
+    /// Updates the selected local decoder without changing the stream epoch or codec.
+    pub fn set_decoder(&mut self, _now_us: u64, decoder: DecoderKind) {
+        self.session.decoder = decoder;
     }
 
     /// Adds a timestamped event to the bounded ring.
@@ -428,12 +438,6 @@ impl TelemetryHub {
         self.session.rttvar_us = rtt.rttvar_us;
         self.session.jitter_us = rtt.jitter_us;
         self.session.fps = frames.events_per_second;
-        if let Some(override_fraction) = self.frame_loss_override {
-            self.session.frame_loss_fraction = override_fraction;
-        } else if frames.events > 0 {
-            self.session.frame_loss_fraction =
-                (frames.bytes as f64 / frames.events as f64).clamp(0.0, 1.0);
-        }
         if let Some(override_fraction) = self.frame_loss_override {
             self.session.frame_loss_fraction = override_fraction;
         } else if frames.events > 0 {
@@ -536,6 +540,25 @@ mod tests {
         assert_eq!(snapshot.session.loss_fraction, 0.02);
         assert_eq!(snapshot.events.events().len(), 1);
         assert_eq!(hub.events_since(0).events().len(), 1);
+    }
+
+    #[test]
+    fn receiver_frame_loss_estimate_survives_successful_frames_between_reports() {
+        let mut hub = TelemetryHub::new();
+        let reports = [(0, 0.30), (250_000, 0.20), (500_000, 0.10)];
+
+        for (report_at, expected_loss) in reports {
+            hub.record_loss(report_at, 0.04, expected_loss);
+            for frame in 0..8 {
+                let now = report_at + frame * 33_333;
+                assert!(hub.record_frame(now, false));
+                let snapshot = hub.snapshot(now);
+                assert_eq!(snapshot.session.frame_loss_fraction, expected_loss);
+            }
+        }
+
+        hub.record_loss(750_000, 0.01, 0.05);
+        assert_eq!(hub.snapshot(750_000).session.frame_loss_fraction, 0.05);
     }
 
     #[test]

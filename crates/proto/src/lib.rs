@@ -15,10 +15,12 @@ mod video;
 pub use error::{ProtoError, ProtoResult};
 pub use framing::{decode_control_frame, FrameDecoder};
 pub use messages::{
-    CaptureBackend, ClipboardOrigin, ClipboardUpdate, ControlMessage, ControlPayload, CursorShape,
-    DisplayInfo, Encoder, Goodbye, GoodbyeReason, Hello, HelloAck, HelloStatus, InputEvent,
-    InputEventKind, OsType, PauseVideo, Ping, Pong, RequestKeyframe, ResumeVideo, SetQuality,
-    StatsReport, StreamCodec, StreamReset, StreamStatus, SwitchMonitor, TopologyAnnounce,
+    CaptureBackend, ClipboardOrigin, ClipboardSyncControl, ClipboardUpdate, ControlMessage,
+    ControlPayload, CursorBlendMode, CursorShape, DisplayInfo, Encoder, Goodbye, GoodbyeReason,
+    Hello, HelloAck, HelloStatus, InputEvent, InputEventKind, LogicalClock, OsType, PauseVideo,
+    Ping, Pong, QualityAdjustment, QualityAdjustmentReason, RequestKeyframe, ResumeVideo,
+    SetQuality, StatsReport, StreamCodec, StreamReset, StreamStatus, SwitchMonitor,
+    TopologyAnnounce, ViewerReport,
 };
 pub use video::{
     encode_cursor_datagram, encode_video_datagram, parse_cursor_datagram, parse_video_datagram,
@@ -26,8 +28,10 @@ pub use video::{
     VIDEO_FLAG_LAST_FRAGMENT,
 };
 
-/// Version zero is the draft protocol version.
-pub const PROTOCOL_VERSION: u8 = 0;
+/// Current wire protocol version.
+pub const PROTOCOL_VERSION: u8 = 4;
+/// Hello/HelloAck feature bit for text-only clipboard synchronization.
+pub const FEATURE_TEXT_CLIPBOARD: u32 = 1 << 0;
 /// Maximum size of a video or cursor UDP datagram, including its header.
 pub const MAX_DATAGRAM: usize = 1200;
 /// Size in bytes of the video-slice datagram header.
@@ -40,6 +44,14 @@ pub const MAX_FRAGMENTS_PER_FRAME: usize = 1024;
 pub const MAX_CONTROL_FRAME_BYTES: usize = 1_048_576;
 /// Maximum UTF-8 clipboard text payload in bytes.
 pub const MAX_CLIPBOARD_BYTES: usize = 524_288;
+/// Current logical-clock schema version embedded in clipboard updates.
+pub const CLIPBOARD_LOGICAL_CLOCK_VERSION: u8 = 1;
+/// Maximum clipboard Lamport counter (positive signed 64-bit range).
+pub const MAX_CLIPBOARD_LOGICAL_CLOCK: u64 = i64::MAX as u64;
+/// Maximum viewer-reported RTT and p95 decode duration in milliseconds.
+pub const MAX_VIEWER_REPORT_DURATION_MS: u32 = 60_000;
+/// Maximum dropped-frame count accepted in one viewer report.
+pub const MAX_VIEWER_REPORT_DROPPED_FRAMES: u32 = 1_000_000;
 /// Maximum displays in a topology announcement.
 pub const MAX_DISPLAYS: usize = 16;
 /// Maximum UTF-8 string size for protocol names and versions.

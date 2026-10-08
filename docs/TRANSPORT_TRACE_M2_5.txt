@@ -1,4 +1,4 @@
-   Compiling racc-testkit v0.1.0 (C:\Users\RobTop\.codex\worktrees\m25-transport-audit\racc-connect\crates\testkit)
+   Compiling racc-testkit v0.1.0 (<USER_PROFILE>
     Finished `test` profile [unoptimized + debuginfo] target(s) in 0.83s
      Running unittests src\lib.rs (target\debug\deps\racc_testkit-857ddf4acea6098c.exe)
 
