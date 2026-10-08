@@ -127,6 +127,8 @@ Payload offsets below start after the type byte. Strings are a one-byte length f
 
 Codec mask bit 0 is H.264; feature bit 0 is text clipboard. Other bits are invalid.
 
+`video_udp_port = 0` identifies a host-capability probe. An authorized host answers the bounded Hello but does not claim a viewer slot, start capture, or alter reconnect state; it closes the probe connection immediately. It answers Busy if a viewer is active or the prior viewer is still within its reconnect grace period. A real viewer must advertise a nonzero UDP port.
+
 ### 2. HelloAck
 
 | Payload offset | Size/type | Field |

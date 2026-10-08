@@ -61,7 +61,7 @@ Writes serialize and validate the entire bounded document, create a unique tempo
 
 ## Host-capability discovery
 
-`probe_peer(address, port, timeout, transport)` accepts only a Tailscale address, sends a bounded project `Hello`, waits for a `HelloAck`, and closes the connection without starting a session. A valid `HelloAck` means `HostCapable`, even if its status is `Busy`, `NotAuthorized`, or `UnsupportedVersion`; timeout, connection failure, or another message means `NotHost`. The trait boundary is fakeable, and the TCP implementation uses `racc-net::connect_control` with `BindPolicy::Tailscale`.
+`probe_peer(address, port, timeout, transport)` accepts only a Tailscale address, sends a bounded project `Hello` with `video_udp_port = 0`, waits for a `HelloAck`, and closes the connection without starting a session. The host treats this as a capability-only handshake: it never reserves the viewer slot or starts capture. A valid `HelloAck` means `HostCapable`, even if its status is `Busy`, `NotAuthorized`, or `UnsupportedVersion`; timeout, connection failure, or another message means `NotHost`. The trait boundary is fakeable, and the TCP implementation uses `racc-net::connect_control` with `BindPolicy::Tailscale`.
 
 The default TCP port is **47473**. The [IANA Service Name and Transport Protocol Port Number Registry](https://www.iana.org/assignments/service-names-port-numbers/service-names-port-numbers.xhtml) listed the containing range 47101–47556 as unassigned when checked on 2026-10-07. This does not prevent a local service or a future assignment from using the port; the application reports the probe unavailable in that case.
 

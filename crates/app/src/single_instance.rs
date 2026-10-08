@@ -157,13 +157,15 @@ mod platform {
             while !shutdown.load(Ordering::Acquire) {
                 // SAFETY: pipe is the live, exclusively owned named-pipe handle created above.
                 let connected = unsafe { ConnectNamedPipe(pipe, null_mut()) } != 0;
-                let error = if connected {
-                    ERROR_PIPE_CONNECTED
-                } else {
-                    // SAFETY: GetLastError reads the calling thread's Win32 error state.
-                    unsafe { GetLastError() }
-                };
-                if connected || error == ERROR_PIPE_CONNECTED || error == ERROR_NO_DATA {
+                if connected {
+                    // In PIPE_NOWAIT mode, success only makes a disconnected instance
+                    // available. A client is connected only after ERROR_PIPE_CONNECTED.
+                    thread::sleep(Duration::from_millis(10));
+                    continue;
+                }
+                // SAFETY: GetLastError reads the calling thread's Win32 error state.
+                let error = unsafe { GetLastError() };
+                if error == ERROR_PIPE_CONNECTED {
                     loop {
                         if shutdown.load(Ordering::Acquire) {
                             break;
@@ -198,7 +200,32 @@ mod platform {
                     let _ = unsafe { DisconnectNamedPipe(pipe) };
                     continue;
                 }
-                if error != ERROR_PIPE_LISTENING && error != ERROR_NO_DATA {
+                if error == ERROR_NO_DATA {
+                    // The client may write its one-byte request and close before this
+                    // nonblocking listener observes ERROR_PIPE_CONNECTED. Drain any
+                    // buffered request before disconnecting this completed instance.
+                    let mut command = 0_u8;
+                    let mut read = 0_u32;
+                    // SAFETY: pipe is the live server handle; command/read are writable buffers.
+                    let received = unsafe {
+                        ReadFile(
+                            pipe,
+                            (&mut command as *mut u8).cast(),
+                            1,
+                            &mut read,
+                            null_mut(),
+                        )
+                    } != 0
+                        && read == 1;
+                    if received && command == SHOW_WINDOW {
+                        let _ = sender.send(());
+                    }
+                    // SAFETY: pipe is the live server handle exclusively owned by this worker.
+                    let _ = unsafe { DisconnectNamedPipe(pipe) };
+                    thread::sleep(Duration::from_millis(10));
+                    continue;
+                }
+                if error != ERROR_PIPE_LISTENING {
                     break;
                 }
                 thread::sleep(Duration::from_millis(10));
@@ -253,7 +280,7 @@ mod platform {
             .to_string_lossy()
             .to_lowercase()
             .hash(&mut hasher);
-        let name = format!(r"\\.\pipe\racc-connect-{:016x}", hasher.finish());
+        let name = format!(r"\\.\pipe\LOCAL\racc-connect-{:016x}", hasher.finish());
         OsStr::new(&name)
             .encode_wide()
             .chain(std::iter::once(0))
@@ -428,6 +455,20 @@ mod tests {
             }
         }
         assert!(show_requested, "primary process receives the show request");
+
+        assert!(platform::request_show(&settings_path).expect("send another show request"));
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        let mut second_show_requested = false;
+        while !second_show_requested && std::time::Instant::now() < deadline {
+            second_show_requested = first.show_requests().take_pending();
+            if !second_show_requested {
+                thread::sleep(Duration::from_millis(10));
+            }
+        }
+        assert!(
+            second_show_requested,
+            "primary process receives a show request after reusing the pipe"
+        );
 
         drop(first);
         std::fs::remove_dir_all(directory).expect("remove temporary test directory");

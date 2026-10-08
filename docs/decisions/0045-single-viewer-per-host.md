@@ -10,7 +10,7 @@ The host control state has one selected display, one capture/encoder pipeline, o
 
 ## Decision
 
-A host accepts one active viewer. A valid Hello received while that viewer's session is active receives `HelloAck(Busy)`. A viewer retries Busy after five seconds. After control loss, the existing session may reconnect during its five-second stop grace period; other Hello requests remain Busy.
+A host accepts one active viewer. A valid Hello received while that viewer's session is active receives `HelloAck(Busy)`. A viewer retries Busy after five seconds. After control loss, only the same approved Tailscale node may reconnect during its five-second stop grace period; other peers remain Busy. A capability probe (`video_udp_port = 0`) never claims the slot or changes session state.
 
 ## Consequences
 

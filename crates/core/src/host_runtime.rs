@@ -233,6 +233,7 @@ pub struct HostRuntime {
     session: HostSession,
     bind_address: Option<SocketAddr>,
     active_viewer: Option<(HostConnectionId, SocketAddr)>,
+    reconnecting_peer_key: Option<String>,
     pending: VecDeque<PendingHostAuthorization>,
     quality_controller: Option<QualityController>,
     quality_preference: QualityPreference,
@@ -269,6 +270,7 @@ impl HostRuntime {
             session,
             bind_address: None,
             active_viewer: None,
+            reconnecting_peer_key: None,
             pending: VecDeque::new(),
             quality_controller: None,
             quality_preference: QualityPreference::Auto,
@@ -377,17 +379,46 @@ impl HostRuntime {
                 HostRuntimeEvent::CloseConnection(connection_id),
             ]);
         }
-        if self.active_viewer.is_some() {
-            self.status.counters.busy_connections =
-                self.status.counters.busy_connections.saturating_add(1);
-            return Ok(vec![
-                self.handshake_event(connection_id, HelloStatus::Busy),
-                HostRuntimeEvent::CloseConnection(connection_id),
-            ]);
-        }
-
         match authorization {
             HostPeerAuthorization::Approved { peer_key } if valid_peer_key(&peer_key) => {
+                // Device discovery sends Hello with no video UDP endpoint. Answer the
+                // capability probe without reserving the single viewer slot or starting
+                // capture; otherwise a periodic probe can race a real viewer and make
+                // the host report Busy for a session that never existed.
+                if hello.video_udp_port == 0 {
+                    let status = if hello.protocol_version != self.capabilities.protocol_version {
+                        HelloStatus::UnsupportedVersion
+                    } else if hello.codecs & self.capabilities.codecs & 1 == 0
+                        || self.active_viewer.is_some()
+                        || self.session.phase() == HostPhase::ControlDisconnected
+                    {
+                        HelloStatus::Busy
+                    } else {
+                        HelloStatus::Ok
+                    };
+                    return Ok(vec![
+                        self.handshake_event(connection_id, status),
+                        HostRuntimeEvent::CloseConnection(connection_id),
+                    ]);
+                }
+                if self.active_viewer.is_some() {
+                    self.status.counters.busy_connections =
+                        self.status.counters.busy_connections.saturating_add(1);
+                    return Ok(vec![
+                        self.handshake_event(connection_id, HelloStatus::Busy),
+                        HostRuntimeEvent::CloseConnection(connection_id),
+                    ]);
+                }
+                if self.session.phase() == HostPhase::ControlDisconnected
+                    && self.reconnecting_peer_key.as_deref() != Some(peer_key.as_str())
+                {
+                    self.status.counters.busy_connections =
+                        self.status.counters.busy_connections.saturating_add(1);
+                    return Ok(vec![
+                        self.handshake_event(connection_id, HelloStatus::Busy),
+                        HostRuntimeEvent::CloseConnection(connection_id),
+                    ]);
+                }
                 let actions = self.session.on_hello(hello);
                 let accepted = actions.iter().any(|action| {
                     matches!(
@@ -398,6 +429,7 @@ impl HostRuntime {
                 });
                 if accepted {
                     self.active_viewer = Some((connection_id, remote_addr));
+                    self.reconnecting_peer_key = Some(peer_key);
                     self.quality_rtt_baseline_us = None;
                     self.latest_viewer_feedback = None;
                     self.latest_sender_observation = None;
@@ -551,6 +583,7 @@ impl HostRuntime {
         };
         if is_goodbye {
             self.active_viewer = None;
+            self.reconnecting_peer_key = None;
         }
         Ok(self.session_events(actions, Some(connection_id)))
     }
@@ -624,6 +657,7 @@ impl HostRuntime {
                 self.session_config,
             );
             self.active_viewer = None;
+            self.reconnecting_peer_key = None;
             self.status.quality_tier = None;
             self.quality_controller = None;
             self.pending_quality_change = None;
@@ -800,6 +834,7 @@ impl HostRuntime {
         });
         self.stopped = true;
         self.active_viewer = None;
+        self.reconnecting_peer_key = None;
         self.bind_address = None;
         self.quality_controller = None;
         self.pending_quality_change = None;
@@ -1479,6 +1514,148 @@ mod tests {
                 ..
             }
         )));
+    }
+
+    #[test]
+    fn capability_probe_does_not_reserve_the_viewer_slot_or_start_capture() {
+        let mut runtime = runtime();
+        runtime
+            .update_tailscale_address(Some(address("100.100.10.1")))
+            .unwrap_or_else(|error| panic!("address update: {error}"));
+        let probe_peer = socket("100.100.10.2", 50_001);
+        let mut probe = hello();
+        probe.video_udp_port = 0;
+
+        let probe_events = runtime
+            .on_hello(1, probe_peer, &probe, approved())
+            .unwrap_or_else(|error| panic!("capability probe: {error}"));
+
+        assert!(probe_events.iter().any(|event| matches!(
+            event,
+            HostRuntimeEvent::SendControl {
+                message: ControlMessage::HelloAck(HelloAck {
+                    status: HelloStatus::Ok,
+                    ..
+                }),
+                ..
+            }
+        )));
+        assert!(probe_events
+            .iter()
+            .any(|event| matches!(event, HostRuntimeEvent::CloseConnection(1))));
+        assert!(!probe_events.iter().any(|event| matches!(
+            event,
+            HostRuntimeEvent::SessionAction {
+                action: HostAction::Capture(_),
+                ..
+            }
+        )));
+        assert!(!runtime.status().viewer_connected);
+
+        let viewer_events = runtime
+            .on_hello(2, probe_peer, &hello(), approved())
+            .unwrap_or_else(|error| panic!("viewer hello after probe: {error}"));
+        assert!(viewer_events.iter().any(|event| matches!(
+            event,
+            HostRuntimeEvent::SessionAction {
+                action: HostAction::Capture(_),
+                ..
+            }
+        )));
+        assert!(runtime.status().viewer_connected);
+    }
+
+    #[test]
+    fn capability_probe_while_streaming_does_not_displace_the_active_viewer() {
+        let mut runtime = runtime();
+        let active_peer = socket("100.100.10.2", 50_001);
+        start_stream(&mut runtime, active_peer);
+        let probe_peer = socket("100.100.10.3", 50_002);
+        let mut probe = hello();
+        probe.video_udp_port = 0;
+
+        let probe_events = runtime
+            .on_hello(2, probe_peer, &probe, approved())
+            .unwrap_or_else(|error| panic!("capability probe during stream: {error}"));
+
+        assert!(probe_events.iter().any(|event| matches!(
+            event,
+            HostRuntimeEvent::SendControl {
+                message: ControlMessage::HelloAck(HelloAck {
+                    status: HelloStatus::Busy,
+                    ..
+                }),
+                ..
+            }
+        )));
+        assert!(probe_events
+            .iter()
+            .any(|event| matches!(event, HostRuntimeEvent::CloseConnection(2))));
+        assert!(runtime.status().viewer_connected);
+        assert_eq!(runtime.status().counters.busy_connections, 0);
+    }
+
+    #[test]
+    fn reconnect_grace_is_limited_to_the_original_approved_peer() {
+        let mut runtime = runtime();
+        let original_peer = socket("100.100.10.2", 50_001);
+        start_stream(&mut runtime, original_peer);
+        runtime
+            .on_disconnect(1, 100_000)
+            .unwrap_or_else(|error| panic!("original disconnect: {error}"));
+        assert_eq!(
+            runtime.status().session_phase,
+            HostPhase::ControlDisconnected
+        );
+
+        let other_peer = socket("100.100.10.3", 50_002);
+        let other = runtime
+            .on_hello(
+                2,
+                other_peer,
+                &hello(),
+                HostPeerAuthorization::Approved {
+                    peer_key: "node-two".to_owned(),
+                },
+            )
+            .unwrap_or_else(|error| panic!("other peer hello: {error}"));
+        assert!(other.iter().any(|event| matches!(
+            event,
+            HostRuntimeEvent::SendControl {
+                message: ControlMessage::HelloAck(HelloAck {
+                    status: HelloStatus::Busy,
+                    ..
+                }),
+                ..
+            }
+        )));
+        assert!(!runtime.status().viewer_connected);
+
+        let original_reconnect = runtime
+            .on_hello(3, socket("100.100.10.2", 50_003), &hello(), approved())
+            .unwrap_or_else(|error| panic!("original peer reconnect: {error}"));
+        assert!(original_reconnect.iter().any(|event| {
+            matches!(
+                event,
+                HostRuntimeEvent::SendControl {
+                    message: ControlMessage::HelloAck(HelloAck {
+                        status: HelloStatus::Ok,
+                        ..
+                    }),
+                    ..
+                }
+            ) || matches!(
+                event,
+                HostRuntimeEvent::SessionAction {
+                    action: HostAction::SendControl(ControlMessage::HelloAck(HelloAck {
+                        status: HelloStatus::Ok,
+                        ..
+                    })),
+                    ..
+                }
+            )
+        }));
+        assert!(runtime.status().viewer_connected);
     }
 
     #[test]

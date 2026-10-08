@@ -14,9 +14,9 @@ use racc_net::{
 };
 use racc_proto::{
     ClipboardOrigin, ClipboardSyncControl, ControlMessage, CursorShape, CursorUpdate, Hello,
-    HelloAck, InputEvent, LogicalClock, OsType, Ping, Pong, SetQuality, StatsReport, StreamReset,
-    StreamStatus, ViewerReport, CLIPBOARD_LOGICAL_CLOCK_VERSION, MAX_VIEWER_REPORT_DROPPED_FRAMES,
-    MAX_VIEWER_REPORT_DURATION_MS, PROTOCOL_VERSION,
+    HelloAck, HelloStatus, InputEvent, LogicalClock, OsType, Ping, Pong, SetQuality, StatsReport,
+    StreamReset, StreamStatus, ViewerReport, CLIPBOARD_LOGICAL_CLOCK_VERSION,
+    MAX_VIEWER_REPORT_DROPPED_FRAMES, MAX_VIEWER_REPORT_DURATION_MS, PROTOCOL_VERSION,
 };
 use racc_session::{SessionEvent, ViewerAction, ViewerSession};
 use racc_telemetry::{
@@ -1090,8 +1090,43 @@ fn run<D, F, S>(
                 match message {
                     ControlMessage::HelloAck(ack) => {
                         let mut a = session.on_hello_ack(ack.clone());
-                        if a.iter()
-                            .any(|x| matches!(x, ViewerAction::DisconnectTransport))
+                        if ack.status == HelloStatus::Busy
+                            && a.iter()
+                                .any(|action| matches!(action, ViewerAction::DisconnectTransport))
+                        {
+                            stop_control_reader(&mut active_control, &mut writer);
+                            connected = false;
+                            clipboard_enable_gate.store(false, Ordering::Release);
+                            topology = None;
+                            video_ready = false;
+                            update_video_activation(
+                                &video_activation,
+                                connected,
+                                visible,
+                                video_ready,
+                            );
+                            clipboard_sync.end_session();
+                            last_remote_wire_sequence = None;
+                            if let Ok(mut pending) = clipboard_change.lock() {
+                                *pending = None;
+                            }
+                            clear_clipboard_actions(&clipboard_actions);
+                            let now = now_us(clock);
+                            telemetry.set_connection_state(now, ConnectionState::Reconnecting);
+                            let _ = telemetry.push_event(
+                                now,
+                                EventKind::ConnectionLost,
+                                "host is busy; retrying in five seconds",
+                            );
+                            emit(
+                                &events,
+                                &dropped,
+                                ViewerRuntimeEvent::Session(SessionEvent::Reconnecting),
+                            );
+                            actions(a, &mut writer, &events, &dropped);
+                        } else if a
+                            .iter()
+                            .any(|action| matches!(action, ViewerAction::DisconnectTransport))
                         {
                             fail(
                                 &events,
@@ -2122,7 +2157,7 @@ mod tests {
     use super::*;
     use racc_decode::{EncodedAccessUnit, FakeDecoder};
     use racc_net::{ControlConn, ControlListener, VideoSender};
-    use racc_proto::{DisplayInfo, HelloStatus, Pong, StreamCodec, TopologyAnnounce};
+    use racc_proto::{DisplayInfo, Pong, StreamCodec, TopologyAnnounce};
     use std::net::{IpAddr, Ipv4Addr};
     use std::sync::Mutex;
 
@@ -2599,6 +2634,116 @@ mod tests {
                 .map(|frame| frame.epoch),
             Some(2),
             "new keyframe should atomically replace the held frame"
+        );
+        runtime.close().expect("close runtime");
+        host.join().expect("host join").expect("host protocol");
+    }
+
+    #[test]
+    fn busy_handshake_retries_without_stopping_the_viewer_runtime() {
+        let ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
+        let listener = ControlListener::bind(
+            SocketAddr::new(ip, 0),
+            BindPolicy::TestOnlyLoopback,
+            ControlSettings {
+                read_timeout: Some(Duration::from_millis(250)),
+                ..ControlSettings::default()
+            },
+        )
+        .expect("test listener");
+        let host_addr = listener.local_addr().expect("host addr");
+        let host = thread::spawn(move || -> Result<(), String> {
+            let (mut first, _) = listener.accept().map_err(|error| error.to_string())?;
+            if !matches!(first.recv(), Ok(ControlMessage::Hello(_))) {
+                return Err("first connection did not send Hello".to_owned());
+            }
+            first
+                .send(&ControlMessage::HelloAck(HelloAck {
+                    protocol_version: PROTOCOL_VERSION,
+                    status: HelloStatus::Busy,
+                    device_name: "fake host".to_owned(),
+                    os: OsType::Windows,
+                    app_version: "test".to_owned(),
+                    codecs: 1,
+                    max_height: 1080,
+                    features: 0,
+                    host_cpu_cores: 8,
+                }))
+                .map_err(|error| error.to_string())?;
+            drop(first);
+
+            let (mut retry, _) = listener.accept().map_err(|error| error.to_string())?;
+            if !matches!(retry.recv(), Ok(ControlMessage::Hello(_))) {
+                return Err("retry connection did not send Hello".to_owned());
+            }
+            retry
+                .send(&ControlMessage::HelloAck(HelloAck {
+                    protocol_version: PROTOCOL_VERSION,
+                    status: HelloStatus::Ok,
+                    device_name: "fake host".to_owned(),
+                    os: OsType::Windows,
+                    app_version: "test".to_owned(),
+                    codecs: 1,
+                    max_height: 1080,
+                    features: 0,
+                    host_cpu_cores: 8,
+                }))
+                .map_err(|error| error.to_string())?;
+            loop {
+                match retry.recv() {
+                    Ok(ControlMessage::Goodbye(_)) | Err(racc_net::ControlError::Closed) => break,
+                    Ok(_) | Err(racc_net::ControlError::Timeout) => {}
+                    Err(error) => return Err(error.to_string()),
+                }
+            }
+            Ok(())
+        });
+
+        let config = ViewerRuntimeConfig::new(
+            host_addr,
+            SocketAddr::new(ip, 0),
+            "viewer-test",
+            OsType::Windows,
+        );
+        let mut runtime = ViewerRuntime::spawn_policy_with_decoder_factory(
+            config,
+            || Ok(FakeDecoder::new()),
+            Sink(Arc::new(Mutex::new(None))),
+            BindPolicy::TestOnlyLoopback,
+        )
+        .expect("runtime");
+
+        let deadline = Instant::now() + Duration::from_secs(12);
+        let mut saw_reconnecting = false;
+        let mut saw_connected = false;
+        let mut failures = Vec::new();
+        while Instant::now() < deadline && !saw_connected {
+            for event in runtime.poll_events(16).unwrap_or_default() {
+                match event {
+                    ViewerRuntimeEvent::Session(SessionEvent::Reconnecting) => {
+                        saw_reconnecting = true;
+                    }
+                    ViewerRuntimeEvent::Connected(_) => saw_connected = true,
+                    ViewerRuntimeEvent::Failed(message) => failures.push(message),
+                    _ => {}
+                }
+            }
+            if !saw_connected {
+                thread::sleep(Duration::from_millis(2));
+            }
+        }
+
+        assert!(
+            saw_reconnecting,
+            "Busy was not exposed as a reconnecting state"
+        );
+        assert!(
+            saw_connected,
+            "runtime did not retry after the host became available"
+        );
+        assert!(
+            failures.is_empty(),
+            "Busy was treated as fatal: {failures:?}"
         );
         runtime.close().expect("close runtime");
         host.join().expect("host join").expect("host protocol");
