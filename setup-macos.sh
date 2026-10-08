@@ -57,7 +57,9 @@ if [[ -z "$TOOLCHAIN" ]]; then
   echo "Could not read the pinned Rust channel from rust-toolchain.toml." >&2
   exit 1
 fi
-rustup toolchain install "$TOOLCHAIN" --component rustfmt --component clippy
+# Rustup's optional self-update can fail on flaky networks even when the pinned toolchain is
+# already installed. Keep resolving the pinned toolchain while skipping only that self-update.
+rustup toolchain install "$TOOLCHAIN" --component rustfmt --component clippy --no-self-update
 rustup target add x86_64-apple-darwin --toolchain "$TOOLCHAIN"
 
 cd "$ROOT"

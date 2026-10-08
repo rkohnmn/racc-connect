@@ -586,3 +586,9 @@ M3b should implement viewer and host session lifecycle state machines using fake
 - [VERIFIED-REVIEW] The Mac-provided Monterey build log stopped because `macos.rs` imported `videotoolbox_avcc_to_annex_b` from the crate root, while the public helper is defined in `crate::macos_avcc`. Corrected the import to the module that owns the helper; this is a Rust path error, not a Monterey API/version incompatibility.
 - [VERIFIED-RUN] `cargo fmt --all -- --check` passed.
 - [UNVERIFIED] The Windows Apple-target `cargo check --offline -p racc-encode --target x86_64-apple-darwin` stopped in `openh264-sys2` before checking this crate because the environment has no target `c++` compiler. The Monterey build must be rerun after pulling this fix to confirm the next stage.
+
+### 2026-10-07 — Monterey Rustup self-update network failure
+
+- [VERIFIED-REVIEW] The owner-provided setup log shows the pinned Rust toolchain and target were already installed, then Rustup failed while checking its optional self-update manifest because the Mac connection reset. The macOS setup now passes Rustup's documented `--no-self-update` option to the pinned toolchain installation; it still resolves and installs the repository-pinned toolchain and Apple target.
+- [VERIFIED-RUN] `bash -n setup-macos.sh` passed using Git Bash on Windows. The setup installer itself was not executed here.
+- [HUMAN-PENDING] The updated script has not been run on Monterey. Pull or download the latest `main` source and rerun `setup-macos.sh`; later Cargo downloads/build steps may still need a stable network connection.
