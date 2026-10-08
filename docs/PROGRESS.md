@@ -580,3 +580,9 @@ M3b should implement viewer and host session lifecycle state machines using fake
 
 - [UNVERIFIED] Added root setup-windows.ps1 and setup-macos.sh with SETUP.md. Windows provisions build tools through winget, builds the existing release/installer flows, installs the app, service, scoped firewall rules and sign-in startup. macOS installs the pinned Intel Rust toolchain, builds the app bundle, places it in the current user's Applications folder, and installs the existing user LaunchAgents. Neither script installs or modifies Tailscale.
 - [HUMAN-PENDING] The Mac script cannot grant Screen Recording or Accessibility permissions. The setup scripts have not been executed on any of the three machines; shell startup in this environment still fails with the setup refresh error. A successful script run will not resolve the known unavailable Hosting toggle or prove streaming.
+
+### 2026-10-07 — Monterey VideoToolbox helper import correction
+
+- [VERIFIED-REVIEW] The Mac-provided Monterey build log stopped because `macos.rs` imported `videotoolbox_avcc_to_annex_b` from the crate root, while the public helper is defined in `crate::macos_avcc`. Corrected the import to the module that owns the helper; this is a Rust path error, not a Monterey API/version incompatibility.
+- [VERIFIED-RUN] `cargo fmt --all -- --check` passed.
+- [UNVERIFIED] The Windows Apple-target `cargo check --offline -p racc-encode --target x86_64-apple-darwin` stopped in `openh264-sys2` before checking this crate because the environment has no target `c++` compiler. The Monterey build must be rerun after pulling this fix to confirm the next stage.

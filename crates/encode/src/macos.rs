@@ -26,9 +26,10 @@ use objc2_video_toolbox::{
     VTEncodeInfoFlags, VTSessionCopyProperty, VTSessionSetProperty,
 };
 
+use crate::macos_avcc::videotoolbox_avcc_to_annex_b;
 use crate::{
-    videotoolbox_avcc_to_annex_b, EncodeError, EncodedPacket, Encoder, EncoderConfig, EncoderInput,
-    EncoderKind, FRAME_RATE, MAX_ENCODED_PACKET_BYTES,
+    EncodeError, EncodedPacket, Encoder, EncoderConfig, EncoderInput, EncoderKind, FRAME_RATE,
+    MAX_ENCODED_PACKET_BYTES,
 };
 
 type NativeCompressionSession = CFRetained<VTCompressionSession>;
