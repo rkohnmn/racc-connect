@@ -2785,7 +2785,7 @@ mod tests {
             SocketAddr::new(ip, 0),
             BindPolicy::TestOnlyLoopback,
             ControlSettings {
-                read_timeout: Some(Duration::from_secs(2)),
+                read_timeout: Some(Duration::from_millis(50)),
                 ..ControlSettings::default()
             },
         )
@@ -2814,7 +2814,7 @@ mod tests {
             conn.send(&ControlMessage::StreamReset(reset()))
                 .map_err(|e| e.to_string())?;
             let mut requested = false;
-            for _ in 0..20 {
+            for _ in 0..100 {
                 match conn.recv() {
                     Ok(ControlMessage::RequestKeyframe(v)) if v.epoch == 1 => {
                         requested = true;
@@ -2835,23 +2835,29 @@ mod tests {
                 33_333,
             )
             .map_err(|e| e.to_string())?;
+            let frame = racc_net::SenderFrame {
+                epoch: 1,
+                frame_id: 1,
+                keyframe: true,
+                config: true,
+                capture_ts_us: 10,
+                bytes: vec![
+                    0, 0, 0, 1, 0x67, 0x42, 0, 0x1e, 0, 0, 1, 0x68, 0xce, 0, 0, 1, 0x65, 0x88,
+                ],
+            };
             sender
-                .send_frame(racc_net::SenderFrame {
-                    epoch: 1,
-                    frame_id: 1,
-                    keyframe: true,
-                    config: true,
-                    capture_ts_us: 10,
-                    bytes: vec![
-                        0, 0, 0, 1, 0x67, 0x42, 0, 0x1e, 0, 0, 1, 0x68, 0xce, 0, 0, 1, 0x65, 0x88,
-                    ],
-                })
+                .send_frame(frame.clone())
                 .map_err(|e| e.to_string())?;
             loop {
                 match conn.recv() {
                     Ok(ControlMessage::Goodbye(_)) => break,
+                    Ok(ControlMessage::RequestKeyframe(_)) => {
+                        let _ = sender.send_frame(frame.clone());
+                    }
                     Ok(_) => {}
-                    Err(racc_net::ControlError::Timeout) => continue,
+                    Err(racc_net::ControlError::Timeout) => {
+                        let _ = sender.send_frame(frame.clone());
+                    }
                     Err(e) => return Err(e.to_string()),
                 }
             }
