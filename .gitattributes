@@ -5,3 +5,4 @@ Cargo.toml text eol=lf
 Cargo.lock text eol=lf
 *.toml text eol=lf
 *.ps1 text eol=crlf
+*.svg text eol=lf

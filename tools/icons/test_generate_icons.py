@@ -47,8 +47,13 @@ class IconGeneratorTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=WORKSPACE_ROOT, prefix=".m10-icons-test-") as directory:
             generated = Path(directory) / "icons"
             subprocess.run([sys.executable, str(GENERATOR), "--output", str(generated)], check=True)
-            generated_files = {path.name: path.read_bytes() for path in generated.iterdir() if path.is_file()}
-            checked_in_files = {path.name: path.read_bytes() for path in CHECKED_IN.iterdir() if path.is_file()}
+            def normalize(name: str, data: bytes) -> bytes:
+                if name.endswith(".svg"):
+                    return data.replace(b"\r\n", b"\n")
+                return data
+
+            generated_files = {path.name: normalize(path.name, path.read_bytes()) for path in generated.iterdir() if path.is_file()}
+            checked_in_files = {path.name: normalize(path.name, path.read_bytes()) for path in CHECKED_IN.iterdir() if path.is_file()}
             self.assertEqual(set(generated_files), set(checked_in_files))
             self.assertEqual(generated_files, checked_in_files)
 
