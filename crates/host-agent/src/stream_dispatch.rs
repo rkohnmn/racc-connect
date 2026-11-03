@@ -201,6 +201,68 @@ mod tests {
     }
 
     #[test]
+    fn encoder_failure_preserves_details_without_dispatch_or_frame_id_consumption() {
+        struct FailingEncoder;
+        impl FrameEncoder for FailingEncoder {
+            fn encode_frame(
+                &mut self,
+                _frame: &GpuFrame,
+            ) -> Result<Option<EncodedPacket>, EncodeError> {
+                Err(EncodeError::Backend("fake encoder unavailable".to_owned()))
+            }
+        }
+        let frame = captured_frame(99);
+        let mut next_frame_id = 5;
+        let outcome = dispatch_frame(
+            &mut FailingEncoder,
+            &frame,
+            2,
+            &mut next_frame_id,
+            |_| -> Result<(), ()> { panic!("encoder failure must not reach the sender") },
+        );
+        match outcome {
+            Err(DispatchError::Encode(EncodeError::Backend(message))) => {
+                assert_eq!(message, "fake encoder unavailable");
+            }
+            _ => panic!("expected the original encoder backend error"),
+        }
+        assert_eq!(next_frame_id, 5);
+    }
+
+    #[test]
+    fn invalid_encoded_output_is_rejected_before_dispatch() {
+        struct InvalidEncoder(usize);
+        impl FrameEncoder for InvalidEncoder {
+            fn encode_frame(
+                &mut self,
+                _frame: &GpuFrame,
+            ) -> Result<Option<EncodedPacket>, EncodeError> {
+                Ok(Some(EncodedPacket {
+                    bytes: vec![0; self.0],
+                    timestamp_us: 99,
+                    keyframe: true,
+                }))
+            }
+        }
+        let frame = captured_frame(99);
+        for size in [0, MAX_ENCODED_PACKET_BYTES + 1] {
+            let mut next_frame_id = 5;
+            let outcome = dispatch_frame(
+                &mut InvalidEncoder(size),
+                &frame,
+                2,
+                &mut next_frame_id,
+                |_| -> Result<(), ()> { panic!("invalid encoded bytes must not reach the sender") },
+            );
+            assert!(matches!(
+                outcome,
+                Err(DispatchError::Encode(EncodeError::InvalidBitstream(_)))
+            ));
+            assert_eq!(next_frame_id, 5);
+        }
+    }
+
+    #[test]
     fn no_encoded_output_does_not_consume_a_frame_id_or_dispatch() {
         struct DelayedEncoder;
         impl FrameEncoder for DelayedEncoder {

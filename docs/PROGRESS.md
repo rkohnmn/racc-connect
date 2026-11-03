@@ -651,3 +651,10 @@ M3b should implement viewer and host session lifecycle state machines using fake
 - [COMPILE-ONLY — Windows; UNVERIFIED — macOS pending CI] Windows-only cursor-shape dispatch is compiled only for Windows or portable fake tests. Shared position transport remains available to macOS, whose cursor is embedded in video. Removed unused Mac diagnostics and derived the existing input handle from its worker instead of passing a redundant constructor argument. No capture or input behavior was enabled.
 - [VERIFIED-RUN] Generated SVG files now require LF on checkout so byte-for-byte icon reproducibility checks also pass with Windows Git autocrlf.
 - [HUMAN-PENDING] Real streaming, capture, permissions, GPU, signing and installation remain outside this CI validation.
+
+### 2026-11-03 — Portable dispatcher failure coverage
+
+- [VERIFIED-RUN — GitHub Actions] Run 41658877274 passed the Windows full check-all job. The Intel macOS test build reached strict Clippy and found that portable dispatcher tests never read the Encode error payload; native macOS validation remains incomplete.
+- [TESTED-FAKE — WINDOWS TASK HOST] Added failure-path regression coverage preserving backend error details and rejecting both empty and oversized output before transport dispatch or frame-ID consumption. All four dispatcher tests passed. No error payload or lint enforcement was removed.
+- [VERIFIED-RUN — WINDOWS TASK HOST] Format check and strict host-agent all-targets Clippy passed with the pinned toolchain. Native Intel macOS checks are pending the follow-up CI run.
+- [HUMAN-PENDING] Real hardware, permissions, capture, streaming, signing and installation remain unverified by these fake tests.
