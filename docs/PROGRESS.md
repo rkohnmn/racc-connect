@@ -643,3 +643,11 @@ M3b should implement viewer and host session lifecycle state machines using fake
 - [VERIFIED-RUN — WINDOWS TASK HOST; 2026-11-02] Environment: Windows, rustc 1.95.0, cargo 1.95.0, installed targets x86_64-pc-windows-msvc and x86_64-apple-darwin; Tailscale CLI 1.102.4. No tailnet connection or device capture test was performed.
 - Owner explicitly approved adding BSD-2-Clause to deny.toml for the required OpenH264 dependency. GPL/AGPL remain excluded. This supersedes the earlier instruction to leave that allowlist unchanged.
 - [HUMAN-PENDING] Hardware, permissions, installation, signing and cross-machine streaming verification remain unchanged.
+
+### 2026-11-03 — CI findings and corrections
+
+- [VERIFIED-RUN — WINDOWS TASK HOST] Full workspace formatting, strict Clippy and unit/loopback tests passed locally before the CI follow-up; subsequent strict Clippy and the corrected focused loopback test passed. Packaging, checksum, hygiene, notices, icon tests and both target cargo-deny checks passed. Advisory notices retain the existing warning policy.
+- [TESTED-FAKE] The CI loopback frame test previously sent one UDP keyframe; the concurrently published owner fix retries the keyframe on timeout or IDR requests and still requires frame metadata, decoder selection and the expected decoded payload dimensions. This accounts for localhost datagram loss without changing runtime networking.
+- [COMPILE-ONLY — Windows; UNVERIFIED — macOS pending CI] Windows-only cursor-shape dispatch is compiled only for Windows or portable fake tests. Shared position transport remains available to macOS, whose cursor is embedded in video. Removed unused Mac diagnostics and derived the existing input handle from its worker instead of passing a redundant constructor argument. No capture or input behavior was enabled.
+- [VERIFIED-RUN] Generated SVG files now require LF on checkout so byte-for-byte icon reproducibility checks also pass with Windows Git autocrlf.
+- [HUMAN-PENDING] Real streaming, capture, permissions, GPU, signing and installation remain outside this CI validation.

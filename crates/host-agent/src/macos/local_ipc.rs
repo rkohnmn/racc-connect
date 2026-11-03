@@ -73,11 +73,6 @@ impl MacLocalIpcServer {
         })
     }
 
-    /// Returns the bound socket path for diagnostics and tests.
-    pub fn socket_path(&self) -> &Path {
-        &self.socket_path
-    }
-
     /// Accepts local clients until `stopping` is set.
     ///
     /// The listener polls nonblocking accept, caps workers at

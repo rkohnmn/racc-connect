@@ -1,5 +1,6 @@
 //! Human-invoked visible capture→NV12→Media Foundation→Annex B probe.
 
+#[cfg(windows)]
 use std::path::PathBuf;
 use std::process::ExitCode;
 

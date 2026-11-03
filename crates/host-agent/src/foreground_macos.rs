@@ -178,7 +178,6 @@ pub fn run_foreground_host() -> Result<(), Box<dyn Error>> {
         runtime,
         control_sender,
         input_worker,
-        callback_input,
         input_injector,
         topology,
         display_map,
@@ -336,11 +335,11 @@ impl MacHost {
         runtime: Arc<Mutex<HostRuntime>>,
         control_sender: ControlSendHandle,
         input_worker: HostInputWorker<MacQuartzInputInjector>,
-        input_handle: HostInputHandle,
         input_injector: MacQuartzInputInjector,
         topology: Topology,
         display_map: HashMap<DisplayId, MacDisplay>,
     ) -> Self {
+        let input_handle = input_worker.handle();
         Self {
             bind_ip,
             runtime,
@@ -629,7 +628,7 @@ fn handle_host_clipboard_control(
         if runner
             .clipboard
             .as_ref()
-            .map_or(true, |bridge| bridge.connection_id() != connection_id)
+            .is_none_or(|bridge| bridge.connection_id() != connection_id)
         {
             runner.clipboard = Some(HostClipboardBridge::new(connection_id));
         }
@@ -805,7 +804,7 @@ fn reset_clipboard_if_session_ended(event: &HostRuntimeEvent, runner: &mut MacHo
         && runner
             .clipboard
             .as_ref()
-            .is_some_and(|bridge| connection_id.map_or(true, |id| bridge.connection_id() == id))
+            .is_some_and(|bridge| connection_id.is_none_or(|id| bridge.connection_id() == id))
     {
         reset_macos_clipboard(runner);
     }
