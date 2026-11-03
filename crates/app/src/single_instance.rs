@@ -412,10 +412,17 @@ mod platform {
     fn socket_path(settings_path: &Path) -> std::path::PathBuf {
         let mut hasher = DefaultHasher::new();
         settings_path.to_string_lossy().hash(&mut hasher);
-        settings_path
+        let hash = hasher.finish();
+        let candidate = settings_path
             .parent()
             .unwrap_or_else(|| Path::new("."))
-            .join(format!("racc-connect-{:016x}.sock", hasher.finish()))
+            .join(format!("racc-{hash:016x}.sock"));
+        // macOS sockaddr_un.sun_path is 104 bytes including the trailing NUL terminator.
+        if candidate.as_os_str().len() < 100 {
+            candidate
+        } else {
+            std::path::PathBuf::from(format!("/tmp/racc-{hash:016x}.sock"))
+        }
     }
 }
 
@@ -449,8 +456,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_nanos();
-        let directory =
-            std::env::temp_dir().join(format!("racc-instance-{}-{nonce}", std::process::id()));
+        let directory = std::env::temp_dir().join(format!("racc-{nonce:x}"));
         (directory.clone(), directory.join("settings.json"))
     }
 
