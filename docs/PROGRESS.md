@@ -636,3 +636,10 @@ M3b should implement viewer and host session lifecycle state machines using fake
 - [VERIFIED-RUN] `scripts/build-release.ps1 -DryRun` and the real Windows release build passed. The portable ZIP is 5,663,590 bytes with SHA-256 `5df57c1b4acc4e240a5abe48792329280950085e8f869dc6ab05c1b3c7863b5b`; app and host binaries are 12,402,176 and 1,900,544 bytes. The sidecar and staged uninstall helper were independently checked. No installer or release app was installed.
 - [BLOCKED — POLICY] Both Windows and macOS target `cargo deny` runs fail on only the required OpenH264 BSD-2-Clause licenses under the unchanged allowlist. M10's instruction to preserve `deny.toml` remains in force. Duplicate and unmaintained crate notices are warnings.
 - [HUMAN-PENDING] M7 is still not demonstrated by the paired screenshots: both peers are discovered, but the sessions are disconnected and no frame is visible. Current source retries Busy after five seconds; screenshots likely came from older binaries or an occupied host slot. Rebuild both machines and test Windows viewer → Mac host alone before reversing roles. The Windows local IPC error is separate. M9 runtime, M8 peer clipboard/telemetry, M10 tray/installer/Mac bundle/24-hour soak, project license and distribution decision, and the M6 hosting toggle remain open; see `blocked.md`.
+
+### 2026-11-02 — Continuous integration
+
+- [UNVERIFIED] Added Windows and Intel macOS CI invoking the existing full check-all scripts, with cargo-deny 0.20.2 installed rather than skipped. CI results will be recorded after execution.
+- [VERIFIED-RUN — WINDOWS TASK HOST; 2026-11-02] Environment: Windows, rustc 1.95.0, cargo 1.95.0, installed targets x86_64-pc-windows-msvc and x86_64-apple-darwin; Tailscale CLI 1.102.4. No tailnet connection or device capture test was performed.
+- Owner explicitly approved adding BSD-2-Clause to deny.toml for the required OpenH264 dependency. GPL/AGPL remain excluded. This supersedes the earlier instruction to leave that allowlist unchanged.
+- [HUMAN-PENDING] Hardware, permissions, installation, signing and cross-machine streaming verification remain unchanged.

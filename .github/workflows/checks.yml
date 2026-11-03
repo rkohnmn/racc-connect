@@ -1,0 +1,36 @@
+name: Repository checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  checks:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Resolve repository-pinned Rust toolchain
+        run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - name: Install enforced license checker
+        run: cargo install cargo-deny --version 0.20.2 --locked
+      - name: Windows format, lint, tests and repository checks
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/check-all.ps1
+      - name: Intel macOS format, lint, tests and repository checks
+        if: runner.os == 'macOS'
+        run: bash scripts/check-all.sh
