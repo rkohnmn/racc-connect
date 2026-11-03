@@ -5,8 +5,8 @@ cd "$(dirname "$0")/.."
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-scripts/check-layering.sh
-scripts/check-features.sh
+bash scripts/check-layering.sh
+bash scripts/check-features.sh
 python3 scripts/gen-notices.py --check
 python3 scripts/test_gen_notices.py
 python3 tools/icons/test_generate_icons.py

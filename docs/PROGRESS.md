@@ -658,3 +658,4 @@ M3b should implement viewer and host session lifecycle state machines using fake
 - [TESTED-FAKE — WINDOWS TASK HOST] Added failure-path regression coverage preserving backend error details and rejecting both empty and oversized output before transport dispatch or frame-ID consumption. All four dispatcher tests passed. No error payload or lint enforcement was removed.
 - [VERIFIED-RUN — WINDOWS TASK HOST] Format check and strict host-agent all-targets Clippy passed with the pinned toolchain. Native Intel macOS checks are pending the follow-up CI run.
 - [HUMAN-PENDING] Real hardware, permissions, capture, streaming, signing and installation remain unverified by these fake tests.
+- [VERIFIED-RUN — SOURCE AUDIT] check-features.sh is tracked with mode 100644. The Unix check-all runner now invokes its Bash helpers explicitly so the native job can execute the feature gate without depending on executable bits. This preserves all checks.
