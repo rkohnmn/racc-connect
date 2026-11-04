@@ -7,7 +7,7 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 cargo clippy --workspace --all-targets -- -D warnings
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-cargo test --workspace
+cargo test --workspace --no-fail-fast
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 & (Join-Path $PSScriptRoot 'check-layering.ps1')

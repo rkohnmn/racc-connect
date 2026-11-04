@@ -25,6 +25,8 @@ jobs:
       - name: Resolve repository-pinned Rust toolchain
         run: rustup show
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
       - name: Install enforced license checker
         run: cargo install cargo-deny --version 0.20.2 --locked
       - name: Windows format, lint, tests and repository checks

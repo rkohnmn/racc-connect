@@ -481,7 +481,24 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_nanos();
-        let directory = std::env::temp_dir().join(format!("racc-{nonce:x}"));
+        // macOS TMPDIR can already consume most of a Unix socket's path limit.
+        // Keep this native IPC fixture under a short, uniquely owned directory.
+        #[cfg(unix)]
+        let base = PathBuf::from("/tmp");
+        #[cfg(target_os = "windows")]
+        let base = std::env::temp_dir();
+        let directory = base.join(format!("racc-{}-{nonce:x}", std::process::id()));
+        let builder = std::fs::DirBuilder::new();
+        #[cfg(unix)]
+        let builder = {
+            use std::os::unix::fs::DirBuilderExt;
+            let mut builder = builder;
+            builder.mode(0o700);
+            builder
+        };
+        builder
+            .create(&directory)
+            .expect("create unique fixture directory");
         (directory.clone(), directory.join("settings.json"))
     }
 

@@ -659,3 +659,12 @@ M3b should implement viewer and host session lifecycle state machines using fake
 - [VERIFIED-RUN — WINDOWS TASK HOST] Format check and strict host-agent all-targets Clippy passed with the pinned toolchain. Native Intel macOS checks are pending the follow-up CI run.
 - [HUMAN-PENDING] Real hardware, permissions, capture, streaming, signing and installation remain unverified by these fake tests.
 - [VERIFIED-RUN — SOURCE AUDIT] check-features.sh is tracked with mode 100644. The Unix check-all runner now invokes its Bash helpers explicitly so the native job can execute the feature gate without depending on executable bits. This preserves all checks.
+
+### 2026-11-03 — Native macOS test fixture and CI diagnostics
+
+- [VERIFIED-RUN — GitHub Actions] Run41708780811 passed the complete Windows job and Intel macOS strict workspace Clippy. macOS compiled all test binaries, then reported93 passing app tests and one failure: the single-instance test's TMPDIR-based socket path exceeded SUN_LEN.
+- [TESTED-FAKE / UNVERIFIED — macOS pending CI] The single-instance fixture now uses a short unique /tmp directory on macOS, atomically created with mode0700. Both successive show-request assertions remain; production socket paths are unchanged.
+- [VERIFIED-RUN — WINDOWS TASK HOST] Both single-instance tests, format and strict app all-targets Clippy passed. The named-pipe test required execution outside the restricted sandbox, which otherwise returns AccessDenied. Bash and PowerShell check-script syntax validation passed.
+- CI runs all workspace test binaries with --no-fail-fast, retaining failure exit status, and saves dependency caches after failed builds to improve subsequent diagnostics and turnaround.
+- [HUMAN-PENDING] Real capture, permissions, peer streaming, GPU, signing and installation remain outside these checks.
+- Integrated concurrent owner commits2f9186e/a3d617b for runtime socket-length fallback and stale-socket recovery. Retained their runtime changes and extra Unix test; the fixture now creates its private directory before either test binds a socket. The fixture applies to Unix in line with the owner's broader module gate. Pre-integration commit fded477 is preserved on task/socket-fixture-before-integration.
