@@ -306,7 +306,7 @@ mod platform {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(unix)]
 mod platform {
     use super::*;
     use std::{
@@ -327,7 +327,15 @@ mod platform {
     ) -> io::Result<JoinHandle<()>> {
         let socket_path = socket_path(settings_path);
         remove_stale_socket(&socket_path)?;
-        let listener = UnixListener::bind(&socket_path)?;
+        let listener = match UnixListener::bind(&socket_path) {
+            Ok(listener) => listener,
+            Err(err) if err.kind() == io::ErrorKind::AddrInUse => {
+                // If bind returned AddrInUse due to a race with an exiting process, retry cleanup once.
+                remove_stale_socket(&socket_path)?;
+                UnixListener::bind(&socket_path)?
+            }
+            Err(err) => return Err(err),
+        };
         if let Err(error) =
             std::fs::set_permissions(&socket_path, std::fs::Permissions::from_mode(0o600))
         {
@@ -349,9 +357,9 @@ mod platform {
                     Err(_) => break,
                 }
             }
-            if std::fs::symlink_metadata(&socket_path)
-                .is_ok_and(|metadata| metadata.file_type().is_socket())
-            {
+            if std::fs::symlink_metadata(&socket_path).is_ok_and(|metadata| {
+                metadata.file_type().is_socket() || metadata.file_type().is_symlink()
+            }) {
                 let _ = std::fs::remove_file(socket_path);
             }
         }))
@@ -397,19 +405,36 @@ mod platform {
         }
     }
 
-    fn remove_stale_socket(path: &Path) -> io::Result<()> {
+    pub(super) fn remove_stale_socket(path: &Path) -> io::Result<()> {
         match std::fs::symlink_metadata(path) {
-            Ok(metadata) if metadata.file_type().is_socket() => std::fs::remove_file(path),
-            Ok(_) => Err(io::Error::new(
-                io::ErrorKind::AlreadyExists,
-                "single-instance endpoint exists and is not a socket",
-            )),
+            Ok(metadata) => {
+                if metadata.file_type().is_socket() || metadata.file_type().is_symlink() {
+                    // Probe connection: if a live process is actively listening, refuse to clobber it.
+                    if UnixStream::connect(path).is_ok() {
+                        return Err(io::Error::new(
+                            io::ErrorKind::AddrInUse,
+                            "single-instance socket is currently held by an active listener",
+                        ));
+                    }
+                    // Connection refused or dead endpoint: safe to unlink.
+                    match std::fs::remove_file(path) {
+                        Ok(()) => Ok(()),
+                        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(()),
+                        Err(err) => Err(err),
+                    }
+                } else {
+                    Err(io::Error::new(
+                        io::ErrorKind::AlreadyExists,
+                        "single-instance endpoint exists and is not a socket",
+                    ))
+                }
+            }
             Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
             Err(error) => Err(error),
         }
     }
 
-    fn socket_path(settings_path: &Path) -> std::path::PathBuf {
+    pub(super) fn socket_path(settings_path: &Path) -> std::path::PathBuf {
         let mut hasher = DefaultHasher::new();
         settings_path.to_string_lossy().hash(&mut hasher);
         let hash = hasher.finish();
@@ -426,7 +451,7 @@ mod platform {
     }
 }
 
-#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+#[cfg(not(any(target_os = "windows", unix)))]
 mod platform {
     use super::*;
 
@@ -443,7 +468,7 @@ mod platform {
     }
 }
 
-#[cfg(all(test, any(target_os = "windows", target_os = "macos")))]
+#[cfg(all(test, any(target_os = "windows", unix)))]
 mod tests {
     use super::*;
     use std::{
@@ -506,5 +531,37 @@ mod tests {
         sender.send(()).expect("send request");
         assert!(requests.take_pending());
         assert!(!requests.take_pending());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn dangling_socket_is_safely_recovered() {
+        let (directory, settings_path) = temporary_settings_path();
+        let sock_path = platform::socket_path(&settings_path);
+
+        // Simulate an orphaned socket left behind after a crash.
+        {
+            let _ = platform::remove_stale_socket(&sock_path);
+            let _dummy_listener = std::os::unix::net::UnixListener::bind(&sock_path)
+                .expect("bind dummy socket to simulate dead instance");
+            // Dropping the listener leaves the socket file on disk without any active process listening.
+        }
+        assert!(
+            sock_path.exists(),
+            "simulated dangling socket file exists on disk"
+        );
+
+        // SingleInstance::acquire should detect that no process is actively connected, clean up the dead socket, and succeed.
+        let instance = SingleInstance::acquire(&settings_path)
+            .expect("acquire should succeed by self-healing dangling socket")
+            .expect("first process owns the instance");
+
+        assert!(
+            platform::request_show(&settings_path).expect("signal instance"),
+            "request_show should successfully connect to the new listener"
+        );
+
+        drop(instance);
+        let _ = std::fs::remove_dir_all(directory);
     }
 }
