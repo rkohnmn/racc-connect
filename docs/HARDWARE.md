@@ -147,3 +147,7 @@ The owner reports that the current UI is weak and cannot inspect screens now. Th
 - [x] [VERIFIED-RUN — WINDOWS PC #1; 2026-10-08] Rebuilt the M10 portable release after the packaging and reconnect fixes: app 12,402,176 B, host-agent 1,900,544 B, ZIP 5,663,590 B. ZIP SHA-256: `5df57c1b4acc4e240a5abe48792329280950085e8f869dc6ab05c1b3c7863b5b`. The sidecar was independently verified with `Get-FileHash`, and the staged ZIP contains `scripts/remove-app-autostart.ps1`. The artifact was not installed or run.
 - [ ] [HUMAN-PENDING] Measure release app/host-agent idle private memory and complete the requested 24-hour stability soak.
 - [ ] [OWNER DECISION] Choose a project license and confirm personal-only or broader distribution. Review the Noto Emoji license question in `docs/OPEN_QUESTIONS.md`; no Noto artwork is shipped.
+
+## 2026-11-10 bounded Windows evidence
+
+See [the dated verification record](WINDOWS_VERIFICATION_2026-11-10.md). PC #1 completed six synthetic encode/decode cases, an owner-approved 90-frame real desktop capture/decode, a 60-second fake UI measurement and a deterministic native IPC teardown regression. These narrow results do not check off full hardware acceptance above. Native Intel macOS CI run 41751346608 passed; older Apple build-blocked labels above describe historical local cross-build limitations. Mac hardware is outside the current Windows-only pass.

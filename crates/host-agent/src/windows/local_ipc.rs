@@ -33,8 +33,8 @@ use windows::Win32::Storage::FileSystem::{
     FILE_FLAG_OVERLAPPED, FILE_SHARE_MODE, OPEN_EXISTING, PIPE_ACCESS_DUPLEX,
 };
 use windows::Win32::System::Pipes::{
-    ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, WaitNamedPipeW, NAMED_PIPE_MODE,
-    PIPE_READMODE_BYTE, PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE, PIPE_WAIT,
+    ConnectNamedPipe, CreateNamedPipeW, WaitNamedPipeW, NAMED_PIPE_MODE, PIPE_READMODE_BYTE,
+    PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE, PIPE_WAIT,
 };
 use windows::Win32::System::Threading::{CreateEventW, WaitForSingleObject};
 use windows::Win32::System::IO::{CancelIoEx, GetOverlappedResult, OVERLAPPED};
@@ -370,10 +370,14 @@ pub fn connect_local_ipc_client() -> io::Result<IpcClient<PipeStream>> {
 
 /// Connects a raw bounded transport, useful when the caller needs custom protocol flow.
 pub fn connect_local_ipc_transport() -> io::Result<PipeStream> {
-    let name = wide_null(LOCAL_IPC_PIPE);
+    connect_local_ipc_transport_at(LOCAL_IPC_PIPE)
+}
+
+fn connect_local_ipc_transport_at(pipe_name: &str) -> io::Result<PipeStream> {
+    let name = wide_null(pipe_name);
     let deadline = Instant::now() + PIPE_TRANSFER_TIMEOUT;
     loop {
-        // SAFETY: The pipe path is a static NUL-terminated UTF-16 name. The handle is
+        // SAFETY: The pipe path is a live NUL-terminated UTF-16 name. The handle is
         // immediately wrapped for unique ownership. Overlapped mode is paired with an
         // OVERLAPPED event for every read and write below.
         let opened = unsafe {
@@ -408,7 +412,11 @@ pub fn local_pipe_security_descriptor_sddl() -> &'static str {
 }
 
 fn create_server_pipe() -> io::Result<OwnedHandle> {
-    let name = wide_null(LOCAL_IPC_PIPE);
+    create_server_pipe_at(LOCAL_IPC_PIPE)
+}
+
+fn create_server_pipe_at(pipe_name: &str) -> io::Result<OwnedHandle> {
+    let name = wide_null(pipe_name);
     let sddl = wide_null(PIPE_SDDL);
     let mut descriptor = PSECURITY_DESCRIPTOR(ptr::null_mut());
     // SAFETY: The SDDL string is valid and NUL-terminated; the API writes the
@@ -498,6 +506,8 @@ fn connect_server_pipe(pipe: HANDLE, stopping: &AtomicBool) -> io::Result<bool> 
 }
 
 pub struct PipeStream {
+    // Each connection owns a fresh instance. CloseHandle preserves buffered
+    // replies for the client; DisconnectNamedPipe would discard unread bytes.
     pipe: OwnedHandle,
     stopping: Option<Arc<AtomicBool>>,
 }
@@ -616,14 +626,6 @@ impl Write for PipeStream {
     }
 }
 
-impl Drop for PipeStream {
-    fn drop(&mut self) {
-        // SAFETY: The handle is still live and uniquely owned. DisconnectNamedPipe
-        // is best-effort because client disconnect is expected after each exchange.
-        let _ = unsafe { DisconnectNamedPipe(self.pipe.0) };
-    }
-}
-
 struct OwnedHandle(HANDLE);
 
 // SAFETY: Windows kernel handles can be used from another thread. This wrapper
@@ -693,6 +695,60 @@ mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static NEXT_TEST_ROOT: AtomicU64 = AtomicU64::new(0);
+
+    #[test]
+    fn native_reply_remains_readable_after_server_handler_returns() {
+        let name = format!(
+            r"\\.\pipe\racc-ipc-test-{}-{}",
+            std::process::id(),
+            NEXT_TEST_ROOT.fetch_add(1, Ordering::Relaxed)
+        );
+        let pipe = create_server_pipe_at(&name).expect("create isolated native pipe");
+        let (finished_tx, finished_rx) = std::sync::mpsc::channel();
+        let server = thread::spawn(move || {
+            let stopping = Arc::new(AtomicBool::new(false));
+            assert!(connect_server_pipe(pipe.0, &stopping).expect("accept native client"));
+            let mut stream = PipeStream::server(pipe, stopping);
+            assert_eq!(
+                racc_core::ipc::read_request(&mut stream).expect("read status request"),
+                IpcRequest::GetStatus
+            );
+            write_server_message(
+                &mut stream,
+                &IpcServerMessage::Response(IpcResponse::Status {
+                    status: HostStatus {
+                        hosting_enabled: true,
+                        helper_state: HelperState::Running,
+                        connected_viewers: 0,
+                        pending_approvals: 0,
+                        screen_recording_granted: None,
+                        accessibility_granted: None,
+                    },
+                }),
+            )
+            .expect("write bounded status response");
+            drop(stream);
+            finished_tx.send(()).expect("signal handler completion");
+        });
+        let mut client = connect_local_ipc_transport_at(&name).expect("connect native client");
+        racc_core::ipc::write_request(&mut client, &IpcRequest::GetStatus)
+            .expect("send status request");
+        // Force the reader to arrive after server teardown, without a timing race.
+        finished_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("server handler completes before the client reads");
+        server.join().expect("server thread completes");
+        assert!(matches!(
+            racc_core::ipc::read_server_message(&mut client),
+            Ok(IpcServerMessage::Response(IpcResponse::Status {
+                status: HostStatus {
+                    hosting_enabled: true,
+                    helper_state: HelperState::Running,
+                    ..
+                }
+            }))
+        ));
+    }
 
     fn make_handler() -> (WindowsHostIpcHandler, std::path::PathBuf) {
         let root = std::env::temp_dir().join(format!(
