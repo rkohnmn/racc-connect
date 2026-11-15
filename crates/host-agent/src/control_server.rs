@@ -107,6 +107,10 @@ pub trait PeerAuthorizer: Send + 'static {
         now_unix_secs: u64,
     ) -> Result<HostPeerAuthorization, IdentityError>;
 
+    /// Recheck the local approval list after the initial whois handshake.
+    /// A peer removed by local IPC must not retain input or clipboard access.
+    fn remains_approved(&self, peer_key: &str) -> bool;
+
     /// Persists approval for a pending peer when the adapter supports owner decisions.
     fn approve_pending(
         &mut self,
@@ -282,6 +286,12 @@ impl<R: ProcessRunner + 'static> PeerAuthorizer for TailscaleAllowlistAuthorizer
 
     fn approve_pending(&mut self, peer_key: &str, now_unix_secs: u64) -> Result<(), IdentityError> {
         TailscaleAllowlistAuthorizer::approve_pending(self, peer_key, now_unix_secs)
+    }
+
+    fn remains_approved(&self, peer_key: &str) -> bool {
+        self.allowlist.entries().iter().any(|entry| {
+            entry.node_id == peer_key && entry.state == ApprovalState::Approved
+        })
     }
 }
 
@@ -631,6 +641,8 @@ fn accept_loop<R: HostRuntimeAdapter, A: PeerAuthorizer>(
         reap_connection_workers(&mut connection_workers, &shared.callback);
         let (connection, remote_addr) = match listener.accept() {
             Ok(accepted) => accepted,
+            // An ineligible source is a rejected connection, not a fatal listener error.
+            Err(ControlError::Bind(_)) => continue,
             Err(error) => {
                 if !shared.stopping.load(Ordering::Acquire) {
                     emit(
@@ -792,6 +804,10 @@ fn handle_connection<R: HostRuntimeAdapter, A: PeerAuthorizer>(
             HostPeerAuthorization::Rejected
         }
     };
+    let authorized_peer_key = match &authorization {
+        HostPeerAuthorization::Approved { peer_key } => peer_key.clone(),
+        _ => String::new(),
+    };
     let hello_events = {
         let mut runtime = lock(&shared.runtime);
         runtime.on_hello(connection_id, remote_addr, &hello, authorization)
@@ -870,6 +886,13 @@ fn handle_connection<R: HostRuntimeAdapter, A: PeerAuthorizer>(
     );
 
     while !shared.stopping.load(Ordering::Acquire) {
+        // A local Remove must revoke an already-established control session.
+        // Check before both outgoing writes and processing more incoming messages.
+        if authorized_peer_key.is_empty()
+            || !lock(&shared.authorizer).remains_approved(&authorized_peer_key)
+        {
+            break;
+        }
         if flush_outbound(&mut connection, &outbound_receiver) {
             break;
         }
@@ -878,6 +901,9 @@ fn handle_connection<R: HostRuntimeAdapter, A: PeerAuthorizer>(
             Err(ControlError::Timeout) => continue,
             Err(_) => break,
         };
+        if !lock(&shared.authorizer).remains_approved(&authorized_peer_key) {
+            break;
+        }
         match message {
             message @ ControlMessage::InputEvent(_)
             | message @ ControlMessage::ClipboardUpdate(_)
@@ -1070,6 +1096,7 @@ mod tests {
     struct FakeAuthorizer {
         order: Arc<Mutex<Vec<&'static str>>>,
         decision: HostPeerAuthorization,
+        revoked: Arc<AtomicBool>,
     }
 
     impl PeerAuthorizer for FakeAuthorizer {
@@ -1080,6 +1107,15 @@ mod tests {
         ) -> Result<HostPeerAuthorization, IdentityError> {
             lock(&self.order).push("authorize");
             Ok(self.decision.clone())
+        }
+
+        fn remains_approved(&self, peer_key: &str) -> bool {
+            !self.revoked.load(Ordering::Acquire)
+                && matches!(
+                    &self.decision,
+                    HostPeerAuthorization::Approved { peer_key: approved }
+                        if approved == peer_key
+                )
         }
     }
 
@@ -1232,6 +1268,7 @@ mod tests {
             decision: HostPeerAuthorization::Approved {
                 peer_key: "test-node".to_owned(),
             },
+            revoked: Arc::new(AtomicBool::new(false)),
         }));
         let result = HostControlServer::bind(
             SocketAddr::from(([127, 0, 0, 1], 0)),
@@ -1255,6 +1292,7 @@ mod tests {
             decision: HostPeerAuthorization::Approved {
                 peer_key: "test-node".to_owned(),
             },
+            revoked: Arc::new(AtomicBool::new(false)),
         }));
         let (event_tx, event_rx) = mpsc::channel();
         let server = HostControlServer::bind_loopback_for_test(
@@ -1446,6 +1484,59 @@ mod tests {
         assert!(lock(&runtime).disconnected);
     }
     #[test]
+    fn active_approved_peer_is_disconnected_after_revocation() {
+        let order = Arc::new(Mutex::new(Vec::new()));
+        let runtime = Arc::new(Mutex::new(FakeRuntime {
+            order: Arc::clone(&order),
+            disconnected: false,
+        }));
+        let revoked = Arc::new(AtomicBool::new(false));
+        let authorizer = Arc::new(Mutex::new(FakeAuthorizer {
+            order,
+            decision: HostPeerAuthorization::Approved {
+                peer_key: "test-node".to_owned(),
+            },
+            revoked: Arc::clone(&revoked),
+        }));
+        let mut server = HostControlServer::bind_loopback_for_test(
+            SocketAddr::from(([127, 0, 0, 1], 0)),
+            ControlSettings::default(),
+            Arc::clone(&runtime),
+            authorizer,
+            |_| {},
+        )
+        .expect("bind test host");
+        let mut client = racc_net::connect_control(
+            server.local_addr(),
+            BindPolicy::TestOnlyLoopback,
+            ControlSettings {
+                read_timeout: Some(Duration::from_secs(2)),
+                ..ControlSettings::default()
+            },
+        )
+        .expect("connect test viewer");
+        client
+            .send(&ControlMessage::Hello(hello()))
+            .expect("send hello");
+        assert!(matches!(
+            client.recv(),
+            Ok(ControlMessage::HelloAck(HelloAck {
+                status: HelloStatus::Ok,
+                ..
+            }))
+        ));
+        revoked.store(true, Ordering::Release);
+        // The host polls reads in <=200ms; revocation must not wait for TCP EOF.
+        let disconnected = matches!(
+            client.recv(),
+            Err(ControlError::Closed | ControlError::Io(_))
+        );
+        assert!(server.stop().is_ok());
+        assert!(disconnected, "removed peer retained an active control connection");
+        assert!(lock(&runtime).disconnected);
+    }
+
+    #[test]
     fn local_allowlist_operations_list_reject_and_remove_only_expected_states() {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -1495,6 +1586,33 @@ mod tests {
         assert!(authorizer.remove_approved("node-approved").is_err());
         drop(authorizer);
         assert!(std::fs::remove_dir_all(config_root).is_ok());
+    }
+
+    #[test]
+    fn removed_approved_entry_is_no_longer_authorized() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |duration| duration.as_nanos());
+        let root = std::env::temp_dir().join(format!(
+            "racc-revocation-{}-{unique}",
+            std::process::id()
+        ));
+        let mut authorizer = TailscaleAllowlistAuthorizer::open_config_root(&root)
+            .expect("open isolated allowlist");
+        let identity = PeerIdentity {
+            node_id: "node-revoked".to_owned(),
+            owner_login: Some("owner@example.test".to_owned()),
+            tags: Vec::new(),
+            node_name: Some("Revoked computer".to_owned()),
+            addresses: Vec::new(),
+        };
+        authorizer.allowlist.approve(&identity, "Revoked computer", 1)
+            .expect("approve peer");
+        assert!(authorizer.remains_approved("node-revoked"));
+        authorizer.remove_approved("node-revoked").expect("remove peer");
+        assert!(!authorizer.remains_approved("node-revoked"));
+        drop(authorizer);
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
