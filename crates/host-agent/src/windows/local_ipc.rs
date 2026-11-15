@@ -279,7 +279,9 @@ pub const LOCAL_IPC_PIPE: &str = r"\\.\pipe\racc-connect-host";
 const PIPE_TRANSFER_TIMEOUT: Duration = Duration::from_secs(5);
 const PIPE_BUFFER_BYTES: u32 = 4096;
 const PIPE_POLL_MS: u32 = 100;
-const PIPE_SDDL: &str = "D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;IU)";
+// Only the object owner (the interactive helper user), SYSTEM, and admins can change
+// host approvals. IU would include every concurrently signed-in local account.
+const PIPE_SDDL: &str = "D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;OW)";
 
 /// Maximum number of simultaneous app and pending-subscription pipe clients.
 pub const MAX_LOCAL_IPC_CLIENTS: usize = 4;
@@ -891,8 +893,9 @@ mod tests {
     fn pipe_acl_and_modes_are_local_and_restrictive() {
         assert_eq!(
             local_pipe_security_descriptor_sddl(),
-            "D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;IU)"
+            "D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;OW)"
         );
+        assert!(!local_pipe_security_descriptor_sddl().contains(";;;IU)"));
         let mode =
             PIPE_TYPE_BYTE.0 | PIPE_READMODE_BYTE.0 | PIPE_WAIT.0 | PIPE_REJECT_REMOTE_CLIENTS.0;
         assert_ne!(mode & PIPE_REJECT_REMOTE_CLIENTS.0, 0);
