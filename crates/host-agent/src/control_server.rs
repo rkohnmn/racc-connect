@@ -289,9 +289,10 @@ impl<R: ProcessRunner + 'static> PeerAuthorizer for TailscaleAllowlistAuthorizer
     }
 
     fn remains_approved(&self, peer_key: &str) -> bool {
-        self.allowlist.entries().iter().any(|entry| {
-            entry.node_id == peer_key && entry.state == ApprovalState::Approved
-        })
+        self.allowlist
+            .entries()
+            .iter()
+            .any(|entry| entry.node_id == peer_key && entry.state == ApprovalState::Approved)
     }
 }
 
@@ -1532,7 +1533,10 @@ mod tests {
             Err(ControlError::Closed | ControlError::Io(_))
         );
         assert!(server.stop().is_ok());
-        assert!(disconnected, "removed peer retained an active control connection");
+        assert!(
+            disconnected,
+            "removed peer retained an active control connection"
+        );
         assert!(lock(&runtime).disconnected);
     }
 
@@ -1593,12 +1597,10 @@ mod tests {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |duration| duration.as_nanos());
-        let root = std::env::temp_dir().join(format!(
-            "racc-revocation-{}-{unique}",
-            std::process::id()
-        ));
-        let mut authorizer = TailscaleAllowlistAuthorizer::open_config_root(&root)
-            .expect("open isolated allowlist");
+        let root =
+            std::env::temp_dir().join(format!("racc-revocation-{}-{unique}", std::process::id()));
+        let mut authorizer =
+            TailscaleAllowlistAuthorizer::open_config_root(&root).expect("open isolated allowlist");
         let identity = PeerIdentity {
             node_id: "node-revoked".to_owned(),
             owner_login: Some("owner@example.test".to_owned()),
@@ -1606,10 +1608,14 @@ mod tests {
             node_name: Some("Revoked computer".to_owned()),
             addresses: Vec::new(),
         };
-        authorizer.allowlist.approve(&identity, "Revoked computer", 1)
+        authorizer
+            .allowlist
+            .approve(&identity, "Revoked computer", 1)
             .expect("approve peer");
         assert!(authorizer.remains_approved("node-revoked"));
-        authorizer.remove_approved("node-revoked").expect("remove peer");
+        authorizer
+            .remove_approved("node-revoked")
+            .expect("remove peer");
         assert!(!authorizer.remains_approved("node-revoked"));
         drop(authorizer);
         let _ = std::fs::remove_dir_all(root);
